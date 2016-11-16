@@ -2,4 +2,4 @@ kubernetes (1.4.6-1) unstable; urgency=medium
 
   * Initial release (Closes: #nnnn)  <nnnn is the bug number of your ITP>
 
- -- unknown <alex@unknown>  Wed, 16 Nov 2016 14:24:34 +0000
+ -- Alexandros Kosiaris <akosiaris@wikimedia.org>  Wed, 16 Nov 2016 14:24:34 +0000

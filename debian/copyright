@@ -1,38 +1,424 @@
-Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
-Upstream-Name: kubernetes
-Source: <url://example.com>
+Format: http://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
+Upstream-Name: Kubernetes
+Source: https://github.com/kubernetes/kubernetes
+Files-Excluded:
+    logo.*
+    examples/cassandra/image/kubernetes-cassandra.jar
+    Godeps/_workspace/src/google.golang.org/cloud
+    Godeps/_workspace/src/gopkg.in/yaml.v2
+    Godeps/_workspace/src/golang.org/x/crypto
+    Godeps/_workspace/src/golang.org/x/oauth2
+    Godeps/_workspace/src/golang.org/x/net
+    Godeps/_workspace/src/golang.org/x/tools
+    Godeps/_workspace/src/github.com/abbot/go-http-auth
+    Godeps/_workspace/src/github.com/appc/spec
+    Godeps/_workspace/src/github.com/appc/cni
+    Godeps/_workspace/src/github.com/armon/go-metrics
+    Godeps/_workspace/src/github.com/aws/aws-sdk-go
+    Godeps/_workspace/src/github.com/beorn7/perks
+    Godeps/_workspace/src/github.com/blang/semver
+    Godeps/_workspace/src/github.com/boltdb/bolt
+    Godeps/_workspace/src/github.com/davecgh/go-spew
+    Godeps/_workspace/src/github.com/docker/docker
+    Godeps/_workspace/src/github.com/elazarl/goproxy
+    Godeps/_workspace/src/github.com/ClusterHQ/flocker-go
+    Godeps/_workspace/src/github.com/camlistore/go4
+    Godeps/_workspace/src/github.com/codegangsta/negroni
+    Godeps/_workspace/src/github.com/coreos/etcd
+    Godeps/_workspace/src/github.com/coreos/go-etcd
+    Godeps/_workspace/src/github.com/coreos/go-oidc
+    Godeps/_workspace/src/github.com/coreos/go-semver
+    Godeps/_workspace/src/github.com/coreos/go-systemd
+    Godeps/_workspace/src/github.com/coreos/pkg
+    Godeps/_workspace/src/github.com/coreos/rkt
+    Godeps/_workspace/src/github.com/daviddengcn/go-colortext
+    Godeps/_workspace/src/github.com/dgrijalva/jwt-go
+    Godeps/_workspace/src/github.com/docker/spdystream
+    Godeps/_workspace/src/github.com/docker/go-units
+    Godeps/_workspace/src/github.com/elazarl/go-bindata-assetfs
+    Godeps/_workspace/src/github.com/emicklei/go-restful
+    Godeps/_workspace/src/github.com/evanphx/json-patch
+    Godeps/_workspace/src/github.com/fsouza/go-dockerclient
+        Godeps/_workspace/src/github.com/fsouza/go-dockerclient/external/golang.org/x/net
+        Godeps/_workspace/src/github.com/fsouza/go-dockerclient/external/golang.org/x/sys
+        Godeps/_workspace/src/github.com/fsouza/go-dockerclient/external/github.com/Sirupsen/logrus
+      __Godeps/_workspace/src/github.com/fsouza/go-dockerclient/external/github.com/docker/docker
+        Godeps/_workspace/src/github.com/fsouza/go-dockerclient/external/github.com/docker/go-units
+        Godeps/_workspace/src/github.com/fsouza/go-dockerclient/external/github.com/gorilla/context
+        Godeps/_workspace/src/github.com/fsouza/go-dockerclient/external/github.com/gorilla/mux
+      __Godeps/_workspace/src/github.com/fsouza/go-dockerclient/external/github.com/hashicorp/go-cleanhttp
+        Godeps/_workspace/src/github.com/fsouza/go-dockerclient/external/github.com/opencontainers/runc
+    Godeps/_workspace/src/github.com/ghodss/yaml
+    Godeps/_workspace/src/github.com/go-ini/ini
+    Godeps/_workspace/src/github.com/godbus/dbus
+    Godeps/_workspace/src/github.com/gogo/protobuf
+   ~Godeps/_workspace/src/github.com/golang/glog
+    Godeps/_workspace/src/github.com/golang/groupcache
+    Godeps/_workspace/src/github.com/golang/protobuf
+    Godeps/_workspace/src/github.com/google/btree
+    Godeps/_workspace/src/github.com/google/cadvisor
+    Godeps/_workspace/src/github.com/google/gofuzz
+    Godeps/_workspace/src/github.com/garyburd/redigo
+    Godeps/_workspace/src/github.com/gorilla/context
+    Godeps/_workspace/src/github.com/gorilla/mux
+    Godeps/_workspace/src/github.com/hashicorp/go-msgpack
+    Godeps/_workspace/src/github.com/hashicorp/golang-lru
+    Godeps/_workspace/src/github.com/hashicorp/raft
+    Godeps/_workspace/src/github.com/hashicorp/raft-boltdb
+    Godeps/_workspace/src/github.com/hawkular/hawkular-client-go
+    Godeps/_workspace/src/github.com/imdario/mergo
+    Godeps/_workspace/src/github.com/influxdb/influxdb
+    Godeps/_workspace/src/github.com/jmespath/go-jmespath
+    Godeps/_workspace/src/github.com/jonboulle/clockwork
+    Godeps/_workspace/src/github.com/juju/ratelimit
+    Godeps/_workspace/src/github.com/kardianos/osext
+    Godeps/_workspace/src/github.com/kr/pty
+    Godeps/_workspace/src/github.com/matttproud/golang_protobuf_extensions
+    Godeps/_workspace/src/github.com/mesos/mesos-go
+    Godeps/_workspace/src/github.com/miekg/dns
+    Godeps/_workspace/src/github.com/mistifyio/go-zfs
+    Godeps/_workspace/src/github.com/mitchellh/mapstructure
+    Godeps/_workspace/src/github.com/mvdan/xurls
+    Godeps/_workspace/src/github.com/mxk/go-flowrate
+    Godeps/_workspace/src/github.com/opencontainers/runc
+    Godeps/_workspace/src/github.com/pborman/uuid
+    Godeps/_workspace/src/github.com/pmezard/go-difflib
+    Godeps/_workspace/src/github.com/prometheus/client_golang
+    Godeps/_workspace/src/github.com/prometheus/client_model
+  __FTBFS__Godeps/_workspace/src/github.com/prometheus/common
+    Godeps/_workspace/src/github.com/prometheus/procfs
+    Godeps/_workspace/src/github.com/rackspace/gophercloud
+    Godeps/_workspace/src/github.com/cpuguy83/go-md2man
+      Godeps/_workspace/src/github.com/russross/blackfriday
+    Godeps/_workspace/src/github.com/samuel/go-zookeeper
+    Godeps/_workspace/src/github.com/scalingdata/gcfg
+    Godeps/_workspace/src/github.com/seccomp/libseccomp-golang
+    Godeps/_workspace/src/github.com/shurcooL/sanitized_anchor_name
+    Godeps/_workspace/src/github.com/Sirupsen/logrus
+    Godeps/_workspace/src/github.com/skynetservices/skydns
+    Godeps/_workspace/src/github.com/stretchr/objx
+    Godeps/_workspace/src/github.com/stretchr/testify
+    Godeps/_workspace/src/github.com/syndtr/gocapability
+    Godeps/_workspace/src/github.com/ugorji/go
+    Godeps/_workspace/src/github.com/vishvananda/netlink
+    Godeps/_workspace/src/github.com/xiang90/probing
+    Godeps/_workspace/src/github.com/xyproto/simpleredis
+    Godeps/_workspace/src/golang.org/x/exp
+    Godeps/_workspace/src/golang.org/x/sys
+    Godeps/_workspace/src/github.com/spf13/cobra
+    Godeps/_workspace/src/github.com/spf13/pflag
+      Godeps/_workspace/src/github.com/inconshreveable/mousetrap
+    Godeps/_workspace/src/speter.net/go/exp
+    Godeps/_workspace/src/google.golang.org/grpc
+    Godeps/_workspace/src/gopkg.in/natefinch/lumberjack.v2
+    Godeps/_workspace/src/k8s.io/heapster/third_party
+ FTBFS:
+  _Godeps/_workspace/src/github.com/onsi/ginkgo
+  _Godeps/_workspace/src/github.com/onsi/gomega
+  _Godeps/_workspace/src/google.golang.org/api
+ Resources:
+    docs/user-guide/update-demo/local/angular.min.js*
+    docs/user-guide/update-demo/local/LICENSE.angular
+ Generated:
+    pkg/ui/data/swagger/datafile.go
 
 Files: *
-Copyright: <years> <put author's name and email here>
-           <years> <likewise for another author>
-License: <special license>
- <Put the license of the package here indented by 1 space>
- <This follows the format of Description: lines in control file>
- .
- <Including paragraphs>
+Copyright:
+    2013-2015 Google Inc
+    2014-2016 the Kubernetes Authors
+License: Apache-2.0
+Comment:
+  examples/mysql-galera/README.md
+    Copyrights in the above file are fragments of the sample output to console.
+  examples/hazelcast/README.md
+    Copyrights in the above file are fragments of the sample output to console.
 
-# If you want to use GPL v2 or later for the /debian/* files use 
-# the following clauses, or change it to suit. Delete these two lines
+Files:
+    third_party/forked/json/*
+    third_party/forked/reflect/*
+    third_party/golang/*
+    third_party/protobuf/*
+Copyright:
+    2012-2013 The Go Authors
+    2008      Google Inc.
+License: BSD-3-Clause~Google
+
+Files:
+    third_party/htpasswd/*
+Copyright:
+    2003-2013 Edgewall Software
+License: BSD-3-Clause
+
+Files:
+    third_party/pause/*
+Copyright:
+    Tianon Gravi
+License: Expat
+
+Files:
+    third_party/swagger-ui/*
+Copyright:
+    2014 Reverb Technologies, Inc.
+License: Apache-2.0
+
+Files:
+    third_party/swagger-ui/lib/backbone-min.js
+Copyright:
+    2010-2014 Jeremy Ashkenas, DocumentCloud and Investigative Reporters & Editors
+License: Expat
+
+Files:
+    third_party/swagger-ui/lib/handlebars*.js
+Copyright:
+    2011-2014 Yehuda Katz
+License: Expat
+
+Files:
+    debian/missing-sources/highlight.js
+    third_party/swagger-ui/lib/highlight*.js
+Copyright:
+    2006, Ivan Sagalaev
+License: BSD-3-Clause
+
+Files:
+    debian/missing-sources/jquery.js
+    third_party/swagger-ui/lib/jquery-1.8.0.min.js
+Copyright:
+    2012 jQuery Foundation and other contributors
+License: Expat
+
+Files:
+    debian/missing-sources/jquery.ba-bbq.js
+    third_party/swagger-ui/lib/jquery.ba-bbq.min.js
+Copyright:
+    2010 "Cowboy" Ben Alman
+License: Expat
+Comment: Alternatively can be GPL-licensed.
+
+Files:
+    debian/missing-sources/jquery.slideto.js
+    third_party/swagger-ui/lib/jquery.slideto.min.js
+Copyright:
+    2015 Joakim Hedlund
+License: Expat
+Comment: https://github.com/Sleavely/jQuery-slideto/blob/master/LICENSE
+
+Files:
+    third_party/swagger-ui/lib/jquery.wiggle.min.js
+Copyright:
+    WonderGroup, Jordan Thomas
+License: Expat
+
+Files:
+    third_party/swagger-ui/lib/marked.js
+Copyright:
+    2011-2014 Christopher Jeffrey
+License: Expat
+
+Files: Godeps/_workspace/src/bitbucket.org/bertimus9/systemstat/*
+Copyright: 2013 Phillip Bond
+License: Expat
+
+Files: Godeps/_workspace/src/bitbucket.org/ww/goautoneg/*
+Copyright: 2011 Open Knowledge Foundation Ltd.
+License: BSD-3-Clause~OKF
+
+Files: Godeps/_workspace/src/github.com/golang/glog/*
+Copyright: 2013 Google Inc.
+License: Apache-2.0
+Comment:
+ Bundled because of
+  https://github.com/kubernetes/kubernetes/issues/17162
+
+Files:
+    Godeps/_workspace/src/github.com/onsi/ginkgo/*
+Copyright:
+    2013-2014 Onsi Fakhouri
+License: Expat
+
+Files:
+    Godeps/_workspace/src/github.com/onsi/gomega/matchers/support/goraph/*
+Copyright:
+    2014 Amit Kumar Gupta
+License: Expat
+
+Files:
+    Godeps/_workspace/src/google.golang.org/api/*
+Copyright:
+    2011-2016 Google Inc.
+    2015-2016 The Go Authors
+    2013      Joshua Tacoma
+License: BSD-3-Clause~Google
+
+Files:
+    Godeps/_workspace/src/google.golang.org/api/googleapi/internal/uritemplates/utils.go
+Copyright:
+    2013 Joshua Tacoma
+License: Expat
+
+Files:
+    Godeps/_workspace/src/github.com/prometheus/common/*
+Copyright:
+    2013-2015 The Prometheus Authors
+License: Apache-2.0
+
+Files:
+    Godeps/_workspace/src/k8s.io/heapster/*
+Copyright:
+    2015 Google Inc.
+License: Apache-2.0
+
+Files:
+    docs/api-reference/autoscaling/v1/definitions.html
+    docs/api-reference/autoscaling/v1/operations.html
+    docs/api-reference/v1/definitions.html
+    docs/api-reference/v1/operations.html
+    docs/api-reference/extensions/v1beta1/definitions.html
+    docs/api-reference/extensions/v1beta1/operations.html
+    docs/api-reference/batch/v1/definitions.html
+    docs/api-reference/batch/v1/operations.html
+    hack/gen-swagger-doc/example-output/definitions.html
+    hack/gen-swagger-doc/example-output/operations.html
+Copyright:
+    2012-2013 Dan Allen and Ryan Waldron
+License: Expat
+Comment:
+ Portion "Asciidoctor default stylesheet" copyright as above.
+ https://github.com/asciidoctor/asciidoctor/blob/v0.1.4/LICENSE
+
 Files: debian/*
-Copyright: 2016 unknown <alex@unknown>
-License: GPL-2+
- This package is free software; you can redistribute it and/or modify
- it under the terms of the GNU General Public License as published by
- the Free Software Foundation; either version 2 of the License, or
- (at your option) any later version.
+Copyright: 2015-2016 Dmitry Smirnov <onlyjob@debian.org>
+License: GPL-3+
+
+Files: debian/patches/*
+Copyright: 2015-2016 Dmitry Smirnov <onlyjob@debian.org>
+License: GPL-3+ or Apache-2.0
+Comment: patches can be licensed under the same terms as upstream.
+
+License: Apache-2.0
+ Licensed under the Apache License, Version 2.0 (the "License");
+ you may not use this file except in compliance with the License.
+ You may obtain a copy of the License at
  .
- This package is distributed in the hope that it will be useful,
+ http://www.apache.org/licenses/LICENSE-2.0
+ .
+ Unless required by applicable law or agreed to in writing, software
+ distributed under the License is distributed on an "AS IS" BASIS,
+ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ See the License for the specific language governing permissions and
+ limitations under the License.
+ .
+ On Debian systems, the complete text of the Apache version 2.0 license
+ can be found in "/usr/share/common-licenses/Apache-2.0".
+
+License: BSD-3-Clause~Google
+ Redistribution and use in source and binary forms, with or without
+ modification, are permitted provided that the following conditions are
+ met:
+ .
+    * Redistributions of source code must retain the above copyright
+ notice, this list of conditions and the following disclaimer.
+    * Redistributions in binary form must reproduce the above
+ copyright notice, this list of conditions and the following disclaimer
+ in the documentation and/or other materials provided with the
+ distribution.
+    * Neither the name of Google Inc. nor the names of its
+ contributors may be used to endorse or promote products derived from
+ this software without specific prior written permission.
+ .
+ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+ "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+ LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+ A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+ OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+ SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+ LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+ DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+ THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+License: BSD-3-Clause
+ Redistribution and use in source and binary forms, with or without
+ modification, are permitted provided that the following conditions are met:
+     * Redistributions of source code must retain the above copyright
+       notice, this list of conditions and the following disclaimer.
+     * Redistributions in binary form must reproduce the above copyright
+       notice, this list of conditions and the following disclaimer in the
+       documentation and/or other materials provided with the distribution.
+     * Neither the name of the <organization> nor the
+       names of its contributors may be used to endorse or promote products
+       derived from this software without specific prior written permission.
+ .
+ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
+ ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+ WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+ DISCLAIMED. IN NO EVENT SHALL <COPYRIGHT HOLDER> BE LIABLE FOR ANY
+ DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+ (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+ LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+License: GPL-3+
+ This program is free software: you can redistribute it and/or modify
+ it under the terms of the GNU General Public License as published by
+ the Free Software Foundation, either version 3 of the License, or
+ (at your option) any later version.
+ ․
+ This program is distributed in the hope that it will be useful,
  but WITHOUT ANY WARRANTY; without even the implied warranty of
  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  GNU General Public License for more details.
- .
- You should have received a copy of the GNU General Public License
- along with this program. If not, see <https://www.gnu.org/licenses/>
- .
- On Debian systems, the complete text of the GNU General
- Public License version 2 can be found in "/usr/share/common-licenses/GPL-2".
+ ․
+ The complete text of the GNU General Public License version 3
+ can be found in "/usr/share/common-licenses/GPL-3".
 
-# Please also look if there are files or directories which have a
-# different copyright/license attached and list them here.
-# Please avoid picking licenses with terms that are more restrictive than the
-# packaged work, as it may make Debian's contributions unacceptable upstream.
+License: BSD-3-Clause~OKF
+ Redistribution and use in source and binary forms, with or without
+ modification, are permitted provided that the following conditions are
+ met:
+ .
+    Redistributions of source code must retain the above copyright
+    notice, this list of conditions and the following disclaimer.
+ .
+    Redistributions in binary form must reproduce the above copyright
+    notice, this list of conditions and the following disclaimer in
+    the documentation and/or other materials provided with the
+    distribution.
+ .
+    Neither the name of the Open Knowledge Foundation Ltd. nor the
+    names of its contributors may be used to endorse or promote
+    products derived from this software without specific prior written
+    permission.
+ .
+ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+ "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+ LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+ A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+ HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+ SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+ LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+ DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+ THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+License: Expat
+ Permission is hereby granted, free of charge, to any person obtaining a copy of
+ this software and associated documentation files (the "Software"), to deal in
+ the Software without restriction, including without limitation the rights to
+ use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of
+ the Software, and to permit persons to whom the Software is furnished to do so,
+ subject to the following conditions:
+ .
+  The above copyright notice and this permission notice shall be included in all
+  copies or substantial portions of the Software.
+ .
+ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
+ FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
+ COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
+ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
