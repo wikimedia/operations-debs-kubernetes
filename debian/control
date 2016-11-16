@@ -1,0 +1,53 @@
+Source: kubernetes
+Section: admin
+Priority: optional
+Maintainer: Alexandros Kosiaris <akosiaris@wikimedia.org>
+Build-Depends: debhelper (>= 9), bash-completion, dh-systemd
+Standards-Version: 3.9.8
+Homepage: http://kubernetes.io/
+Vcs-Browser: https://anonscm.debian.org/cgit/collab-maint/kubernetes.git
+Vcs-Git: https://anonscm.debian.org/git/collab-maint/kubernetes.git
+
+Package: kubernetes-client
+Provides: kubernetes-utils
+Architecture: linux-any
+Depends: ${misc:Depends}, ${shlibs:Depends}
+Recommends: ${misc:Recommends}
+Built-Using: ${misc:Built-Using}
+Description: Kubernetes client tools
+ Kubernetes command line utilities:
+  * kubectl -- Kubernetes cluster management utility
+
+Package: kubernetes-master
+Architecture: linux-any
+Depends: ${misc:Depends}, ${shlibs:Depends} ,adduser
+Recommends: ${misc:Recommends}, kubernetes-client
+Built-Using: ${misc:Built-Using}
+Description: Kubernetes services for master host
+ Container Cluster Manager from Google. Kubernetes is an open source system
+ for managing containerized applications across multiple hosts, providing
+ basic mechanisms for deployment, maintenance, and scaling of applications.
+ .
+ Linux kernel version 3.8 or above is required for proper operation of the
+ daemon process, and that any lower versions may have subtle and/or glaring
+ issues.
+ .
+ This package provides "kube-apiserver", "kube-controller-manager" and
+ "kube-scheduler" daemons.
+
+Package: kubernetes-node
+Provides: cadvisor
+Architecture: linux-any
+Depends: ${misc:Depends}, ${shlibs:Depends} ,adduser ,docker.io
+Recommends: ${misc:Recommends}, kubernetes-client
+Built-Using: ${misc:Built-Using}
+Description: Kubernetes services for node host
+ Container Cluster Manager from Google. Kubernetes is an open source system
+ for managing containerized applications across multiple hosts, providing
+ basic mechanisms for deployment, maintenance, and scaling of applications.
+ .
+ Linux kernel version 3.8 or above is required for proper operation of the
+ daemon process, and that any lower versions may have subtle and/or glaring
+ issues.
+ .
+ This package provides "kube-proxy" and "kubelet" daemons.
