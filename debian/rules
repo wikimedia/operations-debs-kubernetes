@@ -17,3 +17,9 @@ export DH_OPTIONS = -v
 
 %:
 	dh $@
+
+
+override_dh_auto_build:
+	make quick-release
+
+override_dh_auto_test:
