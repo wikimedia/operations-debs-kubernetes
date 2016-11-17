@@ -16,7 +16,7 @@ export DH_OPTIONS = -v
 
 
 %:
-	dh $@ --with bash-completion
+	dh $@ --with bash-completion,systemd
 
 override_dh_auto_build:
 	make quick-release
@@ -37,3 +37,11 @@ override_dh_auto_install:
 	install -d debian/kubernetes-node/usr/bin
 	install _output/release-stage/server/linux-amd64/kubernetes/server/bin/kube-proxy debian/kubernetes-node/usr/bin
 	install _output/release-stage/server/linux-amd64/kubernetes/server/bin/kubelet debian/kubernetes-node/usr/bin
+
+override_dh_installinit:
+	dh_installinit -p kubernetes-master --name=kube-apiserver
+	dh_installinit -p kubernetes-master --name=kube-controller-manager
+	dh_installinit -p kubernetes-master --name=kube-scheduler
+	dh_installinit -p kubernetes-node --name=kube-proxy
+	dh_installinit -p kubernetes-node --name=kubelet
+	dh_installinit --no-start

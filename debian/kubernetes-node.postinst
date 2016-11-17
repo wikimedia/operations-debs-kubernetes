@@ -1,0 +1,13 @@
+#!/bin/sh
+
+set -e
+
+case "$1" in
+    configure)
+        if ! getent passwd kube > /dev/null 2>&1 ; then
+            adduser --quiet --system --group --disabled-login --no-create-home --home /nonexistent kube
+        fi
+    ;;
+esac
+
+#DEBHELPER#

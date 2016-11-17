@@ -1,0 +1,6 @@
+###
+# kubernetes scheduler config
+
+# default config should be adequate
+
+#DAEMON_ARGS=""

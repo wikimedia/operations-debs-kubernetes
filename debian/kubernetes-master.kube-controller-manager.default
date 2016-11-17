@@ -1,0 +1,6 @@
+###
+# The following values are used to configure the kubernetes controller-manager
+
+# defaults from config and apiserver should be adequate
+
+#DAEMON_ARGS=""
