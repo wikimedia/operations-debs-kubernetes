@@ -16,10 +16,24 @@ export DH_OPTIONS = -v
 
 
 %:
-	dh $@
-
+	dh $@ --with bash-completion
 
 override_dh_auto_build:
 	make quick-release
 
 override_dh_auto_test:
+
+override_dh_auto_install:
+	# Client
+	install -d debian/kubernetes-client/usr/bin
+	install _output/release-stage/client/linux-amd64/kubernetes/client/bin/kubectl debian/kubernetes-client/usr/bin
+	# Master
+	install -d debian/kubernetes-master/usr/bin
+	install _output/release-stage/server/linux-amd64/kubernetes/server/bin/hyperkube debian/kubernetes-master/usr/bin
+	install _output/release-stage/server/linux-amd64/kubernetes/server/bin/kube-scheduler debian/kubernetes-master/usr/bin
+	install _output/release-stage/server/linux-amd64/kubernetes/server/bin/kube-apiserver debian/kubernetes-master/usr/bin
+	install _output/release-stage/server/linux-amd64/kubernetes/server/bin/kube-controller-manager debian/kubernetes-master/usr/bin
+	# Note
+	install -d debian/kubernetes-node/usr/bin
+	install _output/release-stage/server/linux-amd64/kubernetes/server/bin/kube-proxy debian/kubernetes-node/usr/bin
+	install _output/release-stage/server/linux-amd64/kubernetes/server/bin/kubelet debian/kubernetes-node/usr/bin
