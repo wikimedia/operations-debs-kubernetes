@@ -1,0 +1,1089 @@
+Description: Add 4 admission controllers
+ We add 4 admission controllers written by Yuvi Panda to increase the security
+ of a kubernetes installation. These are a hostpathenforcer, a hostautomounter
+ enforcer, a registry enforcer and a uidenforcer
+
+Author: Yuvi Panda <yuvipanda@wikimedia.org>
+Origin: other
+Forwarded: no
+Reviewed-By: Alexandros Kosiaris <akosiaris@wikimedia.org>
+Last-Update: 2016-11-23
+
+--- kubernetes-1.4.6.orig/cmd/kube-apiserver/app/plugins.go
++++ kubernetes-1.4.6/cmd/kube-apiserver/app/plugins.go
+@@ -29,6 +29,8 @@ import (
+ 	_ "k8s.io/kubernetes/plugin/pkg/admission/antiaffinity"
+ 	_ "k8s.io/kubernetes/plugin/pkg/admission/deny"
+ 	_ "k8s.io/kubernetes/plugin/pkg/admission/exec"
++	_ "k8s.io/kubernetes/plugin/pkg/admission/hostautomounter"
++	_ "k8s.io/kubernetes/plugin/pkg/admission/hostpathenforcer"
+ 	_ "k8s.io/kubernetes/plugin/pkg/admission/imagepolicy"
+ 	_ "k8s.io/kubernetes/plugin/pkg/admission/initialresources"
+ 	_ "k8s.io/kubernetes/plugin/pkg/admission/limitranger"
+@@ -36,9 +38,11 @@ import (
+ 	_ "k8s.io/kubernetes/plugin/pkg/admission/namespace/exists"
+ 	_ "k8s.io/kubernetes/plugin/pkg/admission/namespace/lifecycle"
+ 	_ "k8s.io/kubernetes/plugin/pkg/admission/persistentvolume/label"
++	_ "k8s.io/kubernetes/plugin/pkg/admission/registryenforcer"
+ 	_ "k8s.io/kubernetes/plugin/pkg/admission/resourcequota"
+ 	_ "k8s.io/kubernetes/plugin/pkg/admission/security/podsecuritypolicy"
+ 	_ "k8s.io/kubernetes/plugin/pkg/admission/securitycontext/scdeny"
+ 	_ "k8s.io/kubernetes/plugin/pkg/admission/serviceaccount"
+ 	_ "k8s.io/kubernetes/plugin/pkg/admission/storageclass/default"
++	_ "k8s.io/kubernetes/plugin/pkg/admission/uidenforcer"
+ )
+--- kubernetes-1.4.6.orig/hack/verify-flags/known-flags.txt
++++ kubernetes-1.4.6/hack/verify-flags/known-flags.txt
+@@ -151,6 +151,7 @@ enable-garbage-collector
+ etcd-address
+ etcd-cafile
+ etcd-certfile
++enforced-docker-registry
+ etcd-config
+ etcd-keyfile
+ etcd-mutation-timeout
+@@ -220,8 +221,11 @@ hard
+ healthz-bind-address
+ healthz-port
+ horizontal-pod-autoscaler-sync-period
++host-automounts
+ host-ipc-sources
+ host-network-sources
++host-paths-allowed
++host-path-prefixes-allowed
+ host-pid-sources
+ host-port-endpoints
+ hostname-override
+--- /dev/null
++++ kubernetes-1.4.6/plugin/pkg/admission/hostautomounter/admission.go
+@@ -0,0 +1,125 @@
++/*
++Copyright 2014 The Kubernetes Authors All rights reserved.
++Copyright 2016 Yuvi Panda <yuvipanda@wikimedia.org>
++
++Licensed under the Apache License, Version 2.0 (the "License");
++you may not use this file except in compliance with the License.
++You may obtain a copy of the License at
++
++    http://www.apache.org/licenses/LICENSE-2.0
++
++Unless required by applicable law or agreed to in writing, software
++distributed under the License is distributed on an "AS IS" BASIS,
++WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++See the License for the specific language governing permissions and
++limitations under the License.
++*/
++
++package hostautomounter
++
++import (
++	"flag"
++	"fmt"
++	"io"
++	"strings"
++
++	clientset "k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset"
++
++	"k8s.io/kubernetes/pkg/admission"
++	"k8s.io/kubernetes/pkg/api"
++	"k8s.io/kubernetes/pkg/util/sets"
++)
++
++var (
++	hostautomounts = flag.String("host-automounts", "", "Comma separated list of paths that will be automatically mounted from container host to container")
++)
++
++func init() {
++	admission.RegisterPlugin("HostAutomounter", func(client clientset.Interface, config io.Reader) (admission.Interface, error) {
++		hostmountset := sets.NewString(strings.Split(*hostautomounts, ",")...)
++		admission := NewHostAutomounter(client, hostmountset)
++		return admission, nil
++	})
++}
++
++type hostAutomounter struct {
++	*admission.Handler
++
++	mounts sets.String
++}
++
++// NewServiceAccount returns an admission.Interface implementation which modifies new pods
++// to make sure they have mounted all the mounts specified in *mounts from the host that
++// containers are running on to the container itself.
++// As an example, this can be used to ensure that all containers mount an nslcd or nscd socket.
++func NewHostAutomounter(cl clientset.Interface, mounts sets.String) *hostAutomounter {
++	return &hostAutomounter{
++		Handler: admission.NewHandler(admission.Create),
++		mounts:  mounts,
++	}
++}
++
++// This does the following:
++// 1. Makes a set of all paths that need mounting
++// 2. Make sure that all paths have a volume assigned.
++// 3. Build a dict of volume paths to their names
++// 4. Make sure all the volumes are mounted on all the
++//    containers
++func (s *hostAutomounter) Admit(a admission.Attributes) (err error) {
++	if a.GetResource().GroupResource() != api.Resource("pods") {
++		return nil
++	}
++	obj := a.GetObject()
++	if obj == nil {
++		return nil
++	}
++	pod, ok := obj.(*api.Pod)
++	if !ok {
++		return nil
++	}
++
++	volumeNameMap := make(map[string]string)
++
++	// Iterate through all existing volumes on the pod
++	for _, volume := range pod.Spec.Volumes {
++		if volume.HostPath != nil {
++			if s.mounts.Has(volume.HostPath.Path) {
++				volumeNameMap[volume.HostPath.Path] = volume.Name
++			}
++		}
++	}
++
++	for volumePath := range s.mounts {
++		if _, exists := volumeNameMap[volumePath]; !exists {
++			volumeName := api.SimpleNameGenerator.GenerateName(fmt.Sprintf("%s-", strings.Replace(volumePath, "/", "", -1)))
++			volumeNameMap[volumePath] = volumeName
++			volume := api.Volume{
++				Name: volumeName,
++				VolumeSource: api.VolumeSource{
++					HostPath: &api.HostPathVolumeSource{
++						Path: volumePath,
++					},
++				},
++			}
++			pod.Spec.Volumes = append(pod.Spec.Volumes, volume)
++		}
++	}
++
++	for i, container := range pod.Spec.Containers {
++		containerMounts := sets.NewString()
++		for _, volumeMount := range container.VolumeMounts {
++			containerMounts.Insert(volumeMount.MountPath)
++		}
++
++		requiredMounts := s.mounts.Difference(containerMounts)
++		for mountPath := range requiredMounts {
++			volumeMount := api.VolumeMount{
++				Name:      volumeNameMap[mountPath],
++				MountPath: mountPath,
++			}
++			pod.Spec.Containers[i].VolumeMounts = append(pod.Spec.Containers[i].VolumeMounts, volumeMount)
++		}
++	}
++
++	return nil
++}
+--- /dev/null
++++ kubernetes-1.4.6/plugin/pkg/admission/hostautomounter/admission_test.go
+@@ -0,0 +1,198 @@
++/*
++Copyright 2014 The Kubernetes Authors All rights reserved.
++Copyright 2016 Yuvi Panda <yuvipanda@wikimedia.org>
++
++Licensed under the Apache License, Version 2.0 (the "License");
++you may not use this file except in compliance with the License.
++You may obtain a copy of the License at
++
++    http://www.apache.org/licenses/LICENSE-2.0
++
++Unless required by applicable law or agreed to in writing, software
++distributed under the License is distributed on an "AS IS" BASIS,
++WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++See the License for the specific language governing permissions and
++limitations under the License.
++*/
++
++package hostautomounter
++
++import (
++	"testing"
++
++	"k8s.io/kubernetes/pkg/admission"
++	"k8s.io/kubernetes/pkg/api"
++	"k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset/fake"
++	"k8s.io/kubernetes/pkg/util/sets"
++)
++
++// Test that an empty pod with no mounts, see if it comes back
++// with the appropriate mounts + volumes
++func TestEmptyPod(t *testing.T) {
++	clientset := fake.NewSimpleClientset()
++
++	testPod := api.Pod{ObjectMeta: api.ObjectMeta{Name: "testPod", Namespace: "test"},
++		Spec: api.PodSpec{},
++	}
++	testPod.Spec.Containers = make([]api.Container, 0, 2)
++	testPod.Spec.Containers = append(testPod.Spec.Containers, api.Container{
++		Image: "b-registry.example.com/someimage",
++	})
++	testPod.Spec.Containers = append(testPod.Spec.Containers, api.Container{
++		Image: "a-registry.example.com/someimage",
++	})
++	mounts := sets.NewString("/var/run/nslcd/socket", "/var/run/nscd/socket")
++	handler := NewHostAutomounter(clientset, mounts)
++
++	err := handler.Admit(admission.NewAttributesRecord(&testPod, nil, api.Kind("Pod").WithVersion("version"), testPod.Namespace, testPod.Name, api.Resource("pods").WithVersion("version"), "", admission.Create, nil))
++	if err != nil {
++		t.Errorf("Expected admission to pass but it failed!")
++	}
++
++	foundVolumes := sets.NewString()
++	for _, volume := range testPod.Spec.Volumes {
++		if volume.HostPath != nil {
++			foundVolumes.Insert(volume.HostPath.Path)
++		}
++	}
++
++	if !foundVolumes.IsSuperset(mounts) {
++		t.Errorf("Expected Volumes not found!")
++	}
++
++	for _, container := range testPod.Spec.Containers {
++		containerMounts := sets.NewString()
++		for _, volumeMount := range container.VolumeMounts {
++			containerMounts.Insert(volumeMount.MountPath)
++		}
++		if !containerMounts.IsSuperset(mounts) {
++			t.Errorf("Expected VolumeMounts not found!")
++		}
++	}
++}
++
++// Test that a pod with custom volumes and mounts, see if
++// our automounts get added properly
++func TestNonEmptyPod(t *testing.T) {
++	clientset := fake.NewSimpleClientset()
++
++	testPod := api.Pod{ObjectMeta: api.ObjectMeta{Name: "testPod", Namespace: "test"},
++		Spec: api.PodSpec{},
++	}
++	testPod.Spec.Containers = make([]api.Container, 0, 2)
++	testPod.Spec.Containers = append(testPod.Spec.Containers, api.Container{
++		Image: "b-registry.example.com/someimage",
++	})
++	testPod.Spec.Containers[0].VolumeMounts = make([]api.VolumeMount, 0, 1)
++	testPod.Spec.Containers[0].VolumeMounts = append(testPod.Spec.Containers[0].VolumeMounts, api.VolumeMount{
++		Name:      "just-a-test",
++		ReadOnly:  true,
++		MountPath: "/tmp/watelse",
++	})
++
++	testPod.Spec.Containers = append(testPod.Spec.Containers, api.Container{
++		Image: "a-registry.example.com/someimage",
++	})
++
++	testPod.Spec.Volumes = make([]api.Volume, 1)
++	testPod.Spec.Volumes = append(testPod.Spec.Volumes, api.Volume{
++		Name: "just-a-test",
++		VolumeSource: api.VolumeSource{
++			HostPath: &api.HostPathVolumeSource{
++				Path: "/tmp/wat",
++			},
++		},
++	})
++
++	mounts := sets.NewString("/var/run/nslcd/socket", "/var/run/nscd/socket")
++	handler := NewHostAutomounter(clientset, mounts)
++
++	err := handler.Admit(admission.NewAttributesRecord(&testPod, nil, api.Kind("Pod").WithVersion("version"), testPod.Namespace, testPod.Name, api.Resource("pods").WithVersion("version"), "", admission.Create, nil))
++	if err != nil {
++		t.Errorf("Expected admission to pass but it failed!")
++	}
++
++	foundVolumes := sets.NewString()
++	for _, volume := range testPod.Spec.Volumes {
++		if volume.HostPath != nil {
++			foundVolumes.Insert(volume.HostPath.Path)
++		}
++	}
++
++	if !foundVolumes.IsSuperset(mounts) {
++		t.Errorf("Expected Volumes not found!")
++	}
++
++	for _, container := range testPod.Spec.Containers {
++		containerMounts := sets.NewString()
++		for _, volumeMount := range container.VolumeMounts {
++			containerMounts.Insert(volumeMount.MountPath)
++		}
++		if !containerMounts.IsSuperset(mounts) {
++			t.Errorf("Expected VolumeMounts not found!")
++		}
++	}
++}
++
++// Test that a pod with one of the host automounts manually
++// mounted gets the other one
++func TestPartialMountedPod(t *testing.T) {
++	clientset := fake.NewSimpleClientset()
++
++	testPod := api.Pod{ObjectMeta: api.ObjectMeta{Name: "testPod", Namespace: "test"},
++		Spec: api.PodSpec{},
++	}
++	testPod.Spec.Containers = make([]api.Container, 0, 2)
++	testPod.Spec.Containers = append(testPod.Spec.Containers, api.Container{
++		Image: "b-registry.example.com/someimage",
++	})
++	testPod.Spec.Containers[0].VolumeMounts = make([]api.VolumeMount, 0, 1)
++	testPod.Spec.Containers[0].VolumeMounts = append(testPod.Spec.Containers[0].VolumeMounts, api.VolumeMount{
++		Name:      "nslcd",
++		ReadOnly:  true,
++		MountPath: "/var/run/nslcd/socket",
++	})
++
++	testPod.Spec.Containers = append(testPod.Spec.Containers, api.Container{
++		Image: "a-registry.example.com/someimage",
++	})
++
++	testPod.Spec.Volumes = make([]api.Volume, 1)
++	testPod.Spec.Volumes = append(testPod.Spec.Volumes, api.Volume{
++		Name: "nslcd",
++		VolumeSource: api.VolumeSource{
++			HostPath: &api.HostPathVolumeSource{
++				Path: "/var/run/nslcd/socket",
++			},
++		},
++	})
++
++	mounts := sets.NewString("/var/run/nslcd/socket", "/var/run/nscd/socket")
++	handler := NewHostAutomounter(clientset, mounts)
++
++	err := handler.Admit(admission.NewAttributesRecord(&testPod, nil, api.Kind("Pod").WithVersion("version"), testPod.Namespace, testPod.Name, api.Resource("pods").WithVersion("version"), "", admission.Create, nil))
++	if err != nil {
++		t.Errorf("Expected admission to pass but it failed!")
++	}
++
++	foundVolumes := sets.NewString()
++	for _, volume := range testPod.Spec.Volumes {
++		if volume.HostPath != nil {
++			foundVolumes.Insert(volume.HostPath.Path)
++		}
++	}
++
++	if !foundVolumes.IsSuperset(mounts) {
++		t.Errorf("Expected Volumes not found!")
++	}
++
++	for _, container := range testPod.Spec.Containers {
++		containerMounts := sets.NewString()
++		for _, volumeMount := range container.VolumeMounts {
++			containerMounts.Insert(volumeMount.MountPath)
++		}
++		if !containerMounts.IsSuperset(mounts) {
++			t.Errorf("Expected VolumeMounts not found! ")
++		}
++	}
++}
+--- /dev/null
++++ kubernetes-1.4.6/plugin/pkg/admission/hostpathenforcer/admission.go
+@@ -0,0 +1,99 @@
++/*
++Copyright 2014 The Kubernetes Authors All rights reserved.
++Copyright 2016 Yuvi Panda <yuvipanda@wikimedia.org>
++
++Licensed under the Apache License, Version 2.0 (the "License");
++you may not use this file except in compliance with the License.
++You may obtain a copy of the License at
++
++    http://www.apache.org/licenses/LICENSE-2.0
++
++Unless required by applicable law or agreed to in writing, software
++distributed under the License is distributed on an "AS IS" BASIS,
++WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++See the License for the specific language governing permissions and
++limitations under the License.
++*/
++
++package hostpathenforcer
++
++import (
++	"flag"
++	"fmt"
++	"io"
++	"strings"
++
++	clientset "k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset"
++
++	"k8s.io/kubernetes/pkg/admission"
++	"k8s.io/kubernetes/pkg/api"
++	apierrors "k8s.io/kubernetes/pkg/api/errors"
++	"k8s.io/kubernetes/pkg/util/sets"
++)
++
++var (
++	pathsAllowedExactFlag    = flag.String("host-paths-allowed", "", "Comma separated list of exact paths on the host that containers are allowed to mount")
++	pathsAllowedPrefixesFlag = flag.String("host-path-prefixes-allowed", "", "Comma separated list of prefixes allowed in paths on the host that can be mounted by containers")
++)
++
++func init() {
++	admission.RegisterPlugin("HostPathEnforcer", func(client clientset.Interface, config io.Reader) (admission.Interface, error) {
++		pathsAllowedSet := sets.NewString(strings.Split(*pathsAllowedExactFlag, ",")...)
++		pathsAllowedPrefixes := strings.Split(*pathsAllowedPrefixesFlag, ",")
++		admission := NewHostPathEnforcer(client, pathsAllowedSet, pathsAllowedPrefixes)
++		return admission, nil
++	})
++}
++
++type plugin struct {
++	*admission.Handler
++
++	pathsAllowedSet      sets.String
++	pathsAllowedPrefixes []string
++}
++
++func NewHostPathEnforcer(cl clientset.Interface, pathsAllowedSet sets.String, pathsAllowedPrefixes []string) *plugin {
++	return &plugin{
++		Handler:              admission.NewHandler(admission.Create),
++		pathsAllowedSet:      pathsAllowedSet,
++		pathsAllowedPrefixes: pathsAllowedPrefixes,
++	}
++}
++
++// If there are any Volumes that are using HostPath to mount paths from the Host,
++// this will ensure that they are all either directly approved paths, or exist in
++// prefixes that are directly approved. Note that this is not foolproof (symlinks,
++// bindmounts, etc) but attacks against those require you have control of the
++// node already anyway.
++func (s *plugin) Admit(a admission.Attributes) (err error) {
++	if a.GetResource().GroupResource() != api.Resource("pods") {
++		return nil
++	}
++	obj := a.GetObject()
++	if obj == nil {
++		return nil
++	}
++	pod, ok := obj.(*api.Pod)
++	if !ok {
++		return nil
++	}
++
++	for _, volume := range pod.Spec.Volumes {
++		if volume.HostPath != nil {
++			if !s.pathsAllowedSet.Has(volume.HostPath.Path) {
++				prefixMatch := false
++				for _, prefix := range s.pathsAllowedPrefixes {
++					if strings.HasPrefix(volume.HostPath.Path, prefix) {
++						prefixMatch = true
++						break
++					}
++				}
++				if !prefixMatch {
++					return apierrors.NewBadRequest(fmt.Sprintf("%s is not in allowed host paths nor allowed host path prefixes", volume.HostPath.Path))
++				}
++			}
++		}
++	}
++
++	return nil
++}
+--- /dev/null
++++ kubernetes-1.4.6/plugin/pkg/admission/hostpathenforcer/admission_test.go
+@@ -0,0 +1,175 @@
++/*
++Copyright 2014 The Kubernetes Authors All rights reserved.
++Copyright 2016 Yuvi Panda <yuvipanda@wikimedia.org>
++
++Licensed under the Apache License, Version 2.0 (the "License");
++you may not use this file except in compliance with the License.
++You may obtain a copy of the License at
++
++    http://www.apache.org/licenses/LICENSE-2.0
++
++Unless required by applicable law or agreed to in writing, software
++distributed under the License is distributed on an "AS IS" BASIS,
++WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++See the License for the specific language governing permissions and
++limitations under the License.
++*/
++
++package hostpathenforcer
++
++import (
++	"testing"
++
++	"k8s.io/kubernetes/pkg/admission"
++	"k8s.io/kubernetes/pkg/api"
++	"k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset/fake"
++	"k8s.io/kubernetes/pkg/util/sets"
++)
++
++// Test that admission fails with unauthorized volume only
++func TestUnauthorizedVolume(t *testing.T) {
++	clientset := fake.NewSimpleClientset()
++
++	testPod := api.Pod{ObjectMeta: api.ObjectMeta{Name: "testPod", Namespace: "test"},
++		Spec: api.PodSpec{},
++	}
++	testPod.Spec.Containers = make([]api.Container, 0, 1)
++	testPod.Spec.Containers = append(testPod.Spec.Containers, api.Container{
++		Image: "b-registry.example.com/someimage",
++	})
++
++	testPod.Spec.Volumes = make([]api.Volume, 1)
++	testPod.Spec.Volumes = append(testPod.Spec.Volumes, api.Volume{
++		Name: "just-a-test",
++		VolumeSource: api.VolumeSource{
++			HostPath: &api.HostPathVolumeSource{
++				Path: "/tmp/wat",
++			},
++		},
++	})
++
++	allowedPaths := sets.NewString("/tmp/no", "/var/lib")
++	allowedPrefixes := make([]string, 0, 0)
++
++	handler := NewHostPathEnforcer(clientset, allowedPaths, allowedPrefixes)
++
++	err := handler.Admit(admission.NewAttributesRecord(&testPod, nil, api.Kind("Pod").WithVersion("version"), testPod.Namespace, testPod.Name, api.Resource("pods").WithVersion("version"), "", admission.Create, nil))
++	if err == nil {
++		t.Errorf("Expected admission to fail but it passed!")
++	}
++}
++
++// Test that admission passes with authorized volumes with exact path match
++func TestAuthorizedVolume(t *testing.T) {
++	clientset := fake.NewSimpleClientset()
++
++	testPod := api.Pod{ObjectMeta: api.ObjectMeta{Name: "testPod", Namespace: "test"},
++		Spec: api.PodSpec{},
++	}
++	testPod.Spec.Containers = make([]api.Container, 0, 1)
++	testPod.Spec.Containers = append(testPod.Spec.Containers, api.Container{
++		Image: "b-registry.example.com/someimage",
++	})
++
++	testPod.Spec.Volumes = make([]api.Volume, 1)
++	testPod.Spec.Volumes = append(testPod.Spec.Volumes, api.Volume{
++		Name: "just-a-test",
++		VolumeSource: api.VolumeSource{
++			HostPath: &api.HostPathVolumeSource{
++				Path: "/tmp/wat",
++			},
++		},
++	})
++
++	allowedPaths := sets.NewString("/tmp/wat", "/var/lib")
++	allowedPrefixes := make([]string, 0, 0)
++
++	handler := NewHostPathEnforcer(clientset, allowedPaths, allowedPrefixes)
++
++	err := handler.Admit(admission.NewAttributesRecord(&testPod, nil, api.Kind("Pod").WithVersion("version"), testPod.Namespace, testPod.Name, api.Resource("pods").WithVersion("version"), "", admission.Create, nil))
++	if err != nil {
++		t.Errorf("Expected admission to pass but it failed!")
++	}
++}
++
++// Test that admission passes with some volumes authorized by exact match & some by prefix match
++func TestMixedAuthorizedVolume(t *testing.T) {
++	clientset := fake.NewSimpleClientset()
++
++	testPod := api.Pod{ObjectMeta: api.ObjectMeta{Name: "testPod", Namespace: "test"},
++		Spec: api.PodSpec{},
++	}
++	testPod.Spec.Containers = make([]api.Container, 0, 1)
++	testPod.Spec.Containers = append(testPod.Spec.Containers, api.Container{
++		Image: "b-registry.example.com/someimage",
++	})
++
++	testPod.Spec.Volumes = make([]api.Volume, 2)
++	testPod.Spec.Volumes = append(testPod.Spec.Volumes, api.Volume{
++		Name: "just-a-test",
++		VolumeSource: api.VolumeSource{
++			HostPath: &api.HostPathVolumeSource{
++				Path: "/tmp/wat",
++			},
++		},
++	})
++	testPod.Spec.Volumes = append(testPod.Spec.Volumes, api.Volume{
++		Name: "just-another-test",
++		VolumeSource: api.VolumeSource{
++			HostPath: &api.HostPathVolumeSource{
++				Path: "/var/lib",
++			},
++		},
++	})
++
++	allowedPaths := sets.NewString("/var/lib")
++	allowedPrefixes := []string{"/tmp/"}
++
++	handler := NewHostPathEnforcer(clientset, allowedPaths, allowedPrefixes)
++
++	err := handler.Admit(admission.NewAttributesRecord(&testPod, nil, api.Kind("Pod").WithVersion("version"), testPod.Namespace, testPod.Name, api.Resource("pods").WithVersion("version"), "", admission.Create, nil))
++	if err != nil {
++		t.Errorf("Expected admission to pass but it failed!")
++	}
++}
++
++// Test that admission fails with some authorized volumes & some unauthorized
++func TestMixedUnauthorizedVolume(t *testing.T) {
++	clientset := fake.NewSimpleClientset()
++
++	testPod := api.Pod{ObjectMeta: api.ObjectMeta{Name: "testPod", Namespace: "test"},
++		Spec: api.PodSpec{},
++	}
++	testPod.Spec.Containers = make([]api.Container, 0, 1)
++	testPod.Spec.Containers = append(testPod.Spec.Containers, api.Container{
++		Image: "b-registry.example.com/someimage",
++	})
++
++	testPod.Spec.Volumes = make([]api.Volume, 2)
++	testPod.Spec.Volumes = append(testPod.Spec.Volumes, api.Volume{
++		Name: "just-a-test",
++		VolumeSource: api.VolumeSource{
++			HostPath: &api.HostPathVolumeSource{
++				Path: "/tmp/wat",
++			},
++		},
++	})
++	testPod.Spec.Volumes = append(testPod.Spec.Volumes, api.Volume{
++		Name: "just-another-test",
++		VolumeSource: api.VolumeSource{
++			HostPath: &api.HostPathVolumeSource{
++				Path: "/var/lib/secret",
++			},
++		},
++	})
++
++	allowedPaths := sets.NewString("/var/lib")
++	allowedPrefixes := []string{"/tmp/"}
++
++	handler := NewHostPathEnforcer(clientset, allowedPaths, allowedPrefixes)
++
++	err := handler.Admit(admission.NewAttributesRecord(&testPod, nil, api.Kind("Pod").WithVersion("version"), testPod.Namespace, testPod.Name, api.Resource("pods").WithVersion("version"), "", admission.Create, nil))
++	if err == nil {
++		t.Errorf("Expected admission to fail but it passed!")
++	}
++}
+--- /dev/null
++++ kubernetes-1.4.6/plugin/pkg/admission/registryenforcer/admission.go
+@@ -0,0 +1,79 @@
++/*
++Copyright 2014 The Kubernetes Authors All rights reserved.
++Copyright 2016 Yuvi Panda <yuvipanda@wikimedia.org>
++
++Licensed under the Apache License, Version 2.0 (the "License");
++you may not use this file except in compliance with the License.
++You may obtain a copy of the License at
++
++    http://www.apache.org/licenses/LICENSE-2.0
++
++Unless required by applicable law or agreed to in writing, software
++distributed under the License is distributed on an "AS IS" BASIS,
++WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++See the License for the specific language governing permissions and
++limitations under the License.
++*/
++
++package registryenforcer
++
++import (
++	"flag"
++	"io"
++	"strings"
++
++	"k8s.io/kubernetes/pkg/admission"
++	"k8s.io/kubernetes/pkg/api"
++	apierrors "k8s.io/kubernetes/pkg/api/errors"
++	clientset "k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset"
++)
++
++var (
++	registry = flag.String("enforced-docker-registry", "", "Only registry docker is allowed to fetch containers from")
++)
++
++func init() {
++	admission.RegisterPlugin("RegistryEnforcer", func(clientset clientset.Interface, config io.Reader) (admission.Interface, error) {
++		return NewRegistryEnforcer(clientset, *registry), nil
++	})
++}
++
++// plugin contains the client used by the RegistryEnforcer admin controller
++type plugin struct {
++	*admission.Handler
++	clientset clientset.Interface
++	registry  string
++}
++
++// NewRegistryEnforcer creates a new instance of the RegistryEnforcer admission controller
++func NewRegistryEnforcer(clientset clientset.Interface, registry string) admission.Interface {
++	return &plugin{
++		Handler:   admission.NewHandler(admission.Create, admission.Update),
++		clientset: clientset,
++		registry:  registry,
++	}
++}
++
++func (p *plugin) Admit(a admission.Attributes) (err error) {
++	if p.registry == "" {
++		return apierrors.NewBadRequest("registryenforcer enabled but --enforced-docker-registry not set")
++	}
++
++	if a.GetResource().GroupResource() != api.Resource("pods") {
++		return nil
++	}
++
++	pod, ok := a.GetObject().(*api.Pod)
++	if !ok {
++		return apierrors.NewBadRequest("Could not get Pod object from resource marked as pod.")
++
++	}
++
++	for i := 0; i < len(pod.Spec.Containers); i++ {
++		container := &pod.Spec.Containers[i]
++		if !strings.HasPrefix(container.Image, p.registry+"/") {
++			return apierrors.NewBadRequest("Attempt to use docker image not in approved registry")
++		}
++	}
++	return nil
++}
+--- /dev/null
++++ kubernetes-1.4.6/plugin/pkg/admission/registryenforcer/admission_test.go
+@@ -0,0 +1,97 @@
++/*
++Copyright 2014 The Kubernetes Authors All rights reserved.
++Copyright 2016 Yuvi Panda <yuvipanda@wikimedia.org>
++
++Licensed under the Apache License, Version 2.0 (the "License");
++you may not use this file except in compliance with the License.
++You may obtain a copy of the License at
++
++    http://www.apache.org/licenses/LICENSE-2.0
++
++Unless required by applicable law or agreed to in writing, software
++distributed under the License is distributed on an "AS IS" BASIS,
++WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++See the License for the specific language governing permissions and
++limitations under the License.
++*/
++
++package registryenforcer
++
++import (
++	"strconv"
++	"testing"
++
++	"k8s.io/kubernetes/pkg/admission"
++	"k8s.io/kubernetes/pkg/api"
++	"k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset/fake"
++)
++
++func validPod(name string, numContainers int, imagePrefix string) api.Pod {
++	pod := api.Pod{ObjectMeta: api.ObjectMeta{Name: name, Namespace: "test"},
++		Spec: api.PodSpec{},
++	}
++	pod.Spec.Containers = make([]api.Container, 0, numContainers)
++	for i := 0; i < numContainers; i++ {
++		pod.Spec.Containers = append(pod.Spec.Containers, api.Container{
++			Image: imagePrefix + strconv.Itoa(i),
++		})
++	}
++	return pod
++}
++
++// Test that a pod with a valid image & an invalid image fails
++func TestMixedImage(t *testing.T) {
++	clientset := fake.NewSimpleClientset()
++
++	testPod := api.Pod{ObjectMeta: api.ObjectMeta{Name: "testPod", Namespace: "test"},
++		Spec: api.PodSpec{},
++	}
++	testPod.Spec.Containers = make([]api.Container, 0, 2)
++	testPod.Spec.Containers = append(testPod.Spec.Containers, api.Container{
++		Image: "b-registry.example.com/someimage",
++	})
++	testPod.Spec.Containers = append(testPod.Spec.Containers, api.Container{
++		Image: "a-registry.example.com/someimage",
++	})
++	handler := &plugin{
++		clientset: clientset,
++		registry:  "a-registry.example.com",
++	}
++
++	err := handler.Admit(admission.NewAttributesRecord(&testPod, nil, api.Kind("Pod").WithVersion("version"), testPod.Namespace, testPod.Name, api.Resource("pods").WithVersion("version"), "", admission.Update, nil))
++	if err == nil {
++		t.Errorf("Expected admission to fail but it passed!")
++	}
++}
++
++// Test that a pod with only invalid images fails
++func TestUnauthorizedImage(t *testing.T) {
++	clientset := fake.NewSimpleClientset()
++	testPod := validPod("test", 2, "test-registry.example.com/testimage:")
++
++	handler := &plugin{
++		clientset: clientset,
++		registry:  "another-registry.example.com",
++	}
++
++	err := handler.Admit(admission.NewAttributesRecord(&testPod, nil, api.Kind("Pod").WithVersion("version"), testPod.Namespace, testPod.Name, api.Resource("pods").WithVersion("version"), "", admission.Update, nil))
++	if err == nil {
++		t.Errorf("Expected admission to fail but it passed!")
++	}
++}
++
++// Test that a pod with only valid images passes
++func TestAuthorizedImage(t *testing.T) {
++	clientset := fake.NewSimpleClientset()
++	testPod := validPod("test", 2, "test-registry.example.com/testimage:")
++
++	handler := &plugin{
++		clientset: clientset,
++		registry:  "test-registry.example.com",
++	}
++
++	err := handler.Admit(admission.NewAttributesRecord(&testPod, nil, api.Kind("Pod").WithVersion("version"), testPod.Namespace, testPod.Name, api.Resource("pods").WithVersion("version"), "", admission.Update, nil))
++	if err != nil {
++		t.Errorf("Expected admission to pass but it failed!")
++	}
++}
+--- /dev/null
++++ kubernetes-1.4.6/plugin/pkg/admission/uidenforcer/admission.go
+@@ -0,0 +1,125 @@
++/*
++Copyright 2014 The Kubernetes Authors All rights reserved.
++
++Licensed under the Apache License, Version 2.0 (the "License");
++you may not use this file except in compliance with the License.
++You may obtain a copy of the License at
++
++    http://www.apache.org/licenses/LICENSE-2.0
++
++Unless required by applicable law or agreed to in writing, software
++distributed under the License is distributed on an "AS IS" BASIS,
++WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++See the License for the specific language governing permissions and
++limitations under the License.
++*/
++
++package uidenforcer
++
++import (
++	"io"
++	"strconv"
++	"time"
++
++	"k8s.io/kubernetes/pkg/admission"
++	"k8s.io/kubernetes/pkg/api"
++	apierrors "k8s.io/kubernetes/pkg/api/errors"
++	"k8s.io/kubernetes/pkg/client/cache"
++	clientset "k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset"
++	"k8s.io/kubernetes/pkg/runtime"
++	"k8s.io/kubernetes/pkg/watch"
++)
++
++func init() {
++	admission.RegisterPlugin("UidEnforcer", func(clientset clientset.Interface, config io.Reader) (admission.Interface, error) {
++		return NewUidEnforcer(clientset), nil
++	})
++}
++
++// plugin contains the client used by the uidenforcer admin controller
++type plugin struct {
++	*admission.Handler
++	clientset clientset.Interface
++	store     cache.Store
++}
++
++// NewUidEnforcer creates a new instance of the UidEnforcer admission controller
++func NewUidEnforcer(clientset clientset.Interface) admission.Interface {
++	store := cache.NewStore(cache.MetaNamespaceKeyFunc)
++	reflector := cache.NewReflector(
++		&cache.ListWatch{
++			ListFunc: func(options api.ListOptions) (runtime.Object, error) {
++				return clientset.Core().Namespaces().List(options)
++			},
++			WatchFunc: func(options api.ListOptions) (watch.Interface, error) {
++				return clientset.Core().Namespaces().Watch(options)
++			},
++		},
++		&api.Namespace{},
++		store,
++		5*time.Minute,
++	)
++	reflector.Run()
++	return &plugin{
++		Handler:   admission.NewHandler(admission.Create, admission.Update),
++		clientset: clientset,
++		store:     store,
++	}
++}
++
++// This will verify the following:
++//  - User object has a numeric uid
++//  - Namespace object has an annotation called RunAsUser that's an integer
++//
++// If after all this there's no SecurityContext on each Container with a RunAsUser set to the same RunAsUser, it'll be set
++func (p *plugin) Admit(a admission.Attributes) (err error) {
++	if a.GetResource().GroupResource() != api.Resource("pods") {
++		return nil
++	}
++
++	pod, ok := a.GetObject().(*api.Pod)
++	if !ok {
++		return apierrors.NewBadRequest("Resource was marked with kind Pod but was unable to be converted")
++	}
++
++	namespaceObj, exists, err := p.store.Get(&api.Namespace{
++		ObjectMeta: api.ObjectMeta{
++			Name:      a.GetNamespace(),
++			Namespace: "",
++		},
++	})
++
++	if !exists {
++		return apierrors.NewBadRequest("Namespace " + a.GetNamespace() + " not found")
++	}
++
++	if err != nil {
++		return apierrors.NewBadRequest("Everything must be in a namespace!")
++	}
++	namespace := namespaceObj.(*api.Namespace)
++
++	uid_str, uid_exists := namespace.Annotations["RunAsUser"]
++	if !uid_exists {
++		return apierrors.NewBadRequest("Namespace does not have a RunAsUser annotation!")
++	}
++
++	// Set PodSecurityContext
++	uid, uid_ok := strconv.ParseInt(uid_str, 10, 32)
++	if uid_ok != nil {
++		return apierrors.NewBadRequest("Namespace's RunAsUser not an integer")
++	}
++
++	pod.Spec.SecurityContext = &api.PodSecurityContext{
++		RunAsUser: &uid,
++		FSGroup:   &uid,
++	}
++
++	for i := 0; i < len(pod.Spec.Containers); i++ {
++		container := &pod.Spec.Containers[i]
++		// Set the SecurityContext to just ours, no matter what
++		container.SecurityContext = &api.SecurityContext{
++			RunAsUser: &uid,
++		}
++	}
++	return nil
++}
+--- /dev/null
++++ kubernetes-1.4.6/plugin/pkg/admission/uidenforcer/admission_test.go
+@@ -0,0 +1,111 @@
++/*
++Copyright 2014 The Kubernetes Authors All rights reserved.
++
++Licensed under the Apache License, Version 2.0 (the "License");
++you may not use this file except in compliance with the License.
++You may obtain a copy of the License at
++
++    http://www.apache.org/licenses/LICENSE-2.0
++
++Unless required by applicable law or agreed to in writing, software
++distributed under the License is distributed on an "AS IS" BASIS,
++WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++See the License for the specific language governing permissions and
++limitations under the License.
++*/
++
++package uidenforcer
++
++import (
++	"strconv"
++	"testing"
++
++	"k8s.io/kubernetes/pkg/admission"
++	"k8s.io/kubernetes/pkg/api"
++	"k8s.io/kubernetes/pkg/client/cache"
++	"k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset/fake"
++)
++
++func validPod(name string, numContainers int) api.Pod {
++	pod := api.Pod{ObjectMeta: api.ObjectMeta{Name: name, Namespace: "test"},
++		Spec: api.PodSpec{},
++	}
++	pod.Spec.Containers = make([]api.Container, 0, numContainers)
++	for i := 0; i < numContainers; i++ {
++		pod.Spec.Containers = append(pod.Spec.Containers, api.Container{
++			Image: "foo:V" + strconv.Itoa(i),
++		})
++	}
++	return pod
++}
++
++func TestNoRunUser(t *testing.T) {
++	clientset := fake.NewSimpleClientset()
++	store := cache.NewStore(cache.MetaNamespaceKeyFunc)
++	testPod := validPod("test", 2)
++
++	namespace := &api.Namespace{
++		ObjectMeta: api.ObjectMeta{
++			Name: testPod.Namespace,
++		},
++	}
++	store.Add(namespace)
++
++	handler := &plugin{
++		clientset: clientset,
++		store:     store,
++	}
++
++	err := handler.Admit(admission.NewAttributesRecord(&testPod, nil, api.Kind("Pod").WithVersion("version"), testPod.Namespace, testPod.Name, api.Resource("pods").WithVersion("version"), "", admission.Update, nil))
++	if err == nil {
++		t.Errorf("Expected admission to fail but it passed!")
++	}
++}
++
++func TestPodWithUID(t *testing.T) {
++	clientset := fake.NewSimpleClientset()
++	store := cache.NewStore(cache.MetaNamespaceKeyFunc)
++	testPod := validPod("test", 2)
++
++	namespace := &api.Namespace{
++		ObjectMeta: api.ObjectMeta{
++			Name: testPod.Namespace,
++			Annotations: map[string]string{
++				"RunAsUser": "100",
++			},
++		},
++	}
++	store.Add(namespace)
++
++	handler := &plugin{
++		clientset: clientset,
++		store:     store,
++	}
++
++	err := handler.Admit(admission.NewAttributesRecord(&testPod, nil, api.Kind("Pod").WithVersion("version"), testPod.Namespace, testPod.Name, api.Resource("pods").WithVersion("version"), "", admission.Update, nil))
++	if err != nil {
++		t.Errorf("%+v", err)
++	}
++
++	if testPod.Spec.SecurityContext == nil {
++		t.Errorf("Pod Security Context is unexpectedly nil")
++	}
++
++	if *testPod.Spec.SecurityContext.RunAsUser != 100 {
++		t.Errorf("Pod Security Context doesn't have RunAsUser set")
++	}
++
++	if *testPod.Spec.SecurityContext.FSGroup != 100 {
++		t.Errorf("Pod Security Context doesn't have FSGroup set")
++	}
++
++	for _, v := range testPod.Spec.Containers {
++		if v.SecurityContext != nil {
++			if *v.SecurityContext.RunAsUser != 100 {
++				t.Errorf("WTF!")
++			}
++		} else {
++			t.Errorf("Uh, no SecurityContext!")
++		}
++	}
++}

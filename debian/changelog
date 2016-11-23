@@ -1,3 +1,12 @@
+kubernetes (1.4.6-2) unstable; urgency=medium
+
+  * hostpathenforcer admission controller
+  * hostautomounter admission controller
+  * registry enforcer
+  * uidenforcer admission controller
+
+ -- Alexandros Kosiaris <akosiaris@wikimedia.org>  Wed, 23 Nov 2016 23:55:11 +0000
+
 kubernetes (1.4.6-1) unstable; urgency=medium
 
   * Initial release (Closes: #nnnn)  <nnnn is the bug number of your ITP>
