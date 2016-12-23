@@ -1,3 +1,9 @@
+kubernetes (1.4.6-3) unstable; urgency=medium
+
+  * Depend on docker-engine as well, as an alternative to docker.io
+
+ -- Alexandros Kosiaris <akosiaris@wikimedia.org>  Fri, 23 Dec 2016 14:23:15 +0000
+
 kubernetes (1.4.6-2) unstable; urgency=medium
 
   * hostpathenforcer admission controller

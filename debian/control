@@ -38,7 +38,7 @@ Description: Kubernetes services for master host
 Package: kubernetes-node
 Provides: cadvisor
 Architecture: linux-any
-Depends: ${misc:Depends}, ${shlibs:Depends} ,adduser ,docker.io
+Depends: ${misc:Depends}, ${shlibs:Depends} ,adduser ,docker.io | docker-engine
 Recommends: ${misc:Recommends}, kubernetes-client
 Built-Using: ${misc:Built-Using}
 Description: Kubernetes services for node host
