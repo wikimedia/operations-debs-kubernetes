@@ -150,7 +150,7 @@ Last-Update: 2016-11-23
 +
 +	for volumePath := range s.mounts {
 +		if _, exists := volumeNameMap[volumePath]; !exists {
-+			volumeName := api.SimpleNameGenerator.GenerateName(fmt.Sprintf("%s-", strings.Replace(strings.Replace(volumePath, ".", "-"), "/", "-", -1)))
++			volumeName := api.SimpleNameGenerator.GenerateName(fmt.Sprintf("%s-", strings.Replace(strings.Replace(volumePath, ".", "-", -1), "/", "-", -1)))
 +			volumeNameMap[volumePath] = volumeName
 +			volume := api.Volume{
 +				Name: volumeName,
