@@ -1,8 +1,15 @@
+kubernetes (1.4.6-5) unstable; urgency=medium
+
+  * Just get rid of /s in HostPathAutoMounter, since starting 
+    a label with - is disallowed
+
+ -- Yuvi Pand <yuvipanda@gmail.com>  Fri, 31 Mar 2017 14:23:15 +0000
+
 kubernetes (1.4.6-4) unstable; urgency=medium
 
   * Fix HostPathAutoMounter to work for paths with '.' in them
 
- -- Yuvi Pand <yuvipanda@gmail.com>  Mon, 20 Mar 2016 14:23:15 +0000
+ -- Yuvi Panda <yuvipanda@gmail.com>  Mon, 20 Mar 2017 14:23:15 +0000
 
 kubernetes (1.4.6-3) unstable; urgency=medium
 
