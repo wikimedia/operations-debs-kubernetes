@@ -1,3 +1,9 @@
+kubernetes (1.4.6-6) unstable; urgency=medium
+
+  * Get rid of nonsensical default
+
+ -- Yuvi Panda <yuvipanda@gmail.com>  Fri, 31 Mar 2017 14:23:15 +0000
+
 kubernetes (1.4.6-5) unstable; urgency=medium
 
   * Just get rid of /s in HostPathAutoMounter, since starting 
