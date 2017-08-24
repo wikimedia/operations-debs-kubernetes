@@ -18,7 +18,7 @@ package generators
 
 import (
 	"github.com/golang/glog"
-	"k8s.io/kubernetes/cmd/libs/go2idl/types"
+	"k8s.io/gengo/types"
 )
 
 // extractBoolTagOrDie gets the comment-tags for the key and asserts that, if
@@ -30,4 +30,15 @@ func extractBoolTagOrDie(key string, lines []string) bool {
 		glog.Fatalf(err.Error())
 	}
 	return val
+}
+
+// extractTag gets the comment-tags for the key.  If the tag did not exist, it
+// returns the empty string.
+func extractTag(key string, lines []string) string {
+	val, present := types.ExtractCommentTags("+", lines)[key]
+	if !present || len(val) < 1 {
+		return ""
+	}
+
+	return val[0]
 }

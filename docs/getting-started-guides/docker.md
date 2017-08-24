@@ -1,16 +1,4 @@
-<!-- BEGIN MUNGE: UNVERSIONED_WARNING -->
-
-
-<!-- END MUNGE: UNVERSIONED_WARNING -->
-
-This file has moved to: http://kubernetes.github.io/docs/getting-started-guides/docker/
-
-
-
-
-<!-- BEGIN MUNGE: IS_VERSIONED -->
-<!-- TAG IS_VERSIONED -->
-<!-- END MUNGE: IS_VERSIONED -->
+This file has moved to [https://github.com/kubernetes/community/blob/master/contributors/devel/local-cluster/docker.md](https://github.com/kubernetes/community/blob/master/contributors/devel/local-cluster/docker.md)
 
 
 <!-- BEGIN MUNGE: GENERATED_ANALYTICS -->

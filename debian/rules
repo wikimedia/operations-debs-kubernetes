@@ -18,6 +18,11 @@ export DH_OPTIONS = -v
 %:
 	dh $@ --with bash-completion,systemd
 
+override_dh_auto_clean:
+	dh_auto_clean
+	rm -f .dockerized-kube-version-defs
+	rm -f test/e2e/generated/bindata.go
+
 override_dh_auto_build:
 	make quick-release
 	./hack/generate-docs.sh

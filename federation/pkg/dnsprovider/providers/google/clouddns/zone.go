@@ -17,11 +17,13 @@ limitations under the License.
 package clouddns
 
 import (
+	"strconv"
+
 	"k8s.io/kubernetes/federation/pkg/dnsprovider"
 	"k8s.io/kubernetes/federation/pkg/dnsprovider/providers/google/clouddns/internal/interfaces"
 )
 
-// Compile time check for interface adeherence
+// Compile time check for interface adherence
 var _ dnsprovider.Zone = &Zone{}
 
 type Zone struct {
@@ -31,6 +33,10 @@ type Zone struct {
 
 func (zone *Zone) Name() string {
 	return zone.impl.DnsName()
+}
+
+func (zone *Zone) ID() string {
+	return strconv.FormatUint(zone.impl.Id(), 10)
 }
 
 func (zone *Zone) ResourceRecordSets() (dnsprovider.ResourceRecordSets, bool) {

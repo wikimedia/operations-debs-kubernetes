@@ -1,2 +1,1 @@
-do-not-update-munge-docs.diff
-admission_controllers
+docker_tag_removal.diff

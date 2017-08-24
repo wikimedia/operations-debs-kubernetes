@@ -22,14 +22,12 @@ set -o pipefail
 
 KUBE_ROOT=$(dirname "${BASH_SOURCE}")/..
 
-echo "NOTE: $0 has been replaced by 'make test-integration'"
+echo "$0 has been replaced by 'make test-integration'"
 echo
-echo "The equivalent of this invocation is: "
-echo "    make test-integration"
+echo "The following invocation will run all integration tests: "
+echo '    make test-integration'
 echo
+echo "The following invocation will run a specific test with the verbose flag set: "
+echo '    make test-integration WHAT=./test/integration/pods KUBE_GOFLAGS="-v" KUBE_TEST_ARGS="-run ^TestPodUpdateActiveDeadlineSeconds$"'
 echo
-echo make --no-print-directory -C "${KUBE_ROOT}" test-integration
-echo
-echo
-make --no-print-directory -C "${KUBE_ROOT}" test-integration
-
+exit 1

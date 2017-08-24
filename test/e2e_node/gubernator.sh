@@ -35,19 +35,19 @@ fi
 
 # Check that user has gsutil
 if [[ $(which gsutil) == "" ]]; then
-  echo "Could not find gsutil when running:\which gsutil"
+  echo "Could not find gsutil when running \`which gsutil\`"
   exit 1
 fi
 
 # Check that user has gcloud
 if [[ $(which gcloud) == "" ]]; then
-  echo "Could not find gcloud when running:\which gcloud"
+  echo "Could not find gcloud when running: \`which gcloud\`"
   exit 1
 fi
 
 # Check that user has Credentialed Active account
 if ! gcloud auth list | grep -q "ACTIVE"; then
-  echo "Could not find active account when running:\gcloud auth list"
+  echo "Could not find active account when running: \`gcloud auth list\`"
   exit 1
 fi
 
@@ -119,7 +119,7 @@ for upload_attempt in $(seq 3); do
   if [[ -d "${ARTIFACTS}" && -n $(ls -A "${ARTIFACTS}") ]]; then
     V=2 kube::log::status "Uploading artifacts"
     gsutil -m -q -o "GSUtil:use_magicfile=True" cp -a "${gcs_acl}" -r -c \
-      -z log,xml,xml "${ARTIFACTS}" "${GCS_LOGS_PATH}/artifacts" || continue
+      -z log,xml,json "${ARTIFACTS}" "${GCS_LOGS_PATH}/artifacts" || continue
   fi
   break
 done

@@ -14,11 +14,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-// CAUTION: If you update code in this file, you may need to also update code
-//          in contrib/mesos/cmd/km/kube-apiserver.go
 package main
 
 import (
+	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/kubernetes/cmd/kube-apiserver/app"
 	"k8s.io/kubernetes/cmd/kube-apiserver/app/options"
 )
@@ -26,13 +25,15 @@ import (
 // NewKubeAPIServer creates a new hyperkube Server object that includes the
 // description and flags.
 func NewKubeAPIServer() *Server {
-	s := options.NewAPIServer()
+	s := options.NewServerRunOptions()
 
 	hks := Server{
-		SimpleUsage: "apiserver",
-		Long:        "The main API entrypoint and interface to the storage system.  The API server is also the focal point for all authorization decisions.",
+		name:            "apiserver",
+		AlternativeName: "kube-apiserver",
+		SimpleUsage:     "apiserver",
+		Long:            "The main API entrypoint and interface to the storage system.  The API server is also the focal point for all authorization decisions.",
 		Run: func(_ *Server, args []string) error {
-			return app.Run(s)
+			return app.Run(s, wait.NeverStop)
 		},
 	}
 	s.AddFlags(hks.Flags())

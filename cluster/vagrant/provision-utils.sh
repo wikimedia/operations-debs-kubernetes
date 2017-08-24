@@ -63,10 +63,8 @@ enable_node_logging: '$(echo "$ENABLE_NODE_LOGGING" | sed -e "s/'/''/g")'
 logging_destination: '$(echo "$LOGGING_DESTINATION" | sed -e "s/'/''/g")'
 elasticsearch_replicas: '$(echo "$ELASTICSEARCH_LOGGING_REPLICAS" | sed -e "s/'/''/g")'
 enable_cluster_dns: '$(echo "$ENABLE_CLUSTER_DNS" | sed -e "s/'/''/g")'
-dns_replicas: '$(echo "$DNS_REPLICAS" | sed -e "s/'/''/g")'
 dns_server: '$(echo "$DNS_SERVER_IP" | sed -e "s/'/''/g")'
 dns_domain: '$(echo "$DNS_DOMAIN" | sed -e "s/'/''/g")'
-federations_domain_map: ''
 instance_prefix: '$(echo "$INSTANCE_PREFIX" | sed -e "s/'/''/g")'
 admission_control: '$(echo "$ADMISSION_CONTROL" | sed -e "s/'/''/g")'
 enable_cpu_cfs_quota: '$(echo "$ENABLE_CPU_CFS_QUOTA" | sed -e "s/'/''/g")'
@@ -76,6 +74,7 @@ opencontrail_tag: '$(echo "$OPENCONTRAIL_TAG" | sed -e "s/'/''/g")'
 opencontrail_kubernetes_tag: '$(echo "$OPENCONTRAIL_KUBERNETES_TAG" | sed -e "s/'/''/g")'
 opencontrail_public_subnet: '$(echo "$OPENCONTRAIL_PUBLIC_SUBNET" | sed -e "s/'/''/g")'
 e2e_storage_test_environment: '$(echo "$E2E_STORAGE_TEST_ENVIRONMENT" | sed -e "s/'/''/g")'
+enable_hostpath_provisioner: '$(echo "$ENABLE_HOSTPATH_PROVISIONER" | sed -e "s/'/''/g")'
 EOF
 
 if [ -n "${EVICTION_HARD:-}" ]; then

@@ -1,0 +1,22 @@
+Index: kubernetes/build/lib/release.sh
+===================================================================
+--- kubernetes.orig/build/lib/release.sh
++++ kubernetes/build/lib/release.sh
+@@ -282,7 +282,7 @@ function kube::release::create_docker_im
+         local docker_tag="${KUBE_GIT_VERSION/+/_}"
+         if [[ -z "${docker_tag}" ]]; then
+           kube::log::error "git version information missing; cannot create Docker tag"
+-          return 1
++          docker_tag='v1.7.4'
+         fi
+         local docker_build_path="${binary_dir}/${binary_name}.dockerbuild"
+         local docker_file_path="${docker_build_path}/Dockerfile"
+@@ -324,7 +324,7 @@ function kube::release::create_docker_im
+           kube::log::status "Not a release, so deleting docker image ${docker_image_tag}"
+           "${DOCKER[@]}" rmi ${docker_image_tag} 2>/dev/null || true
+         fi
+-      ) &
++      )
+     done
+ 
+     kube::util::wait-for-jobs || { kube::log::error "previous Docker build failed"; return 1; }

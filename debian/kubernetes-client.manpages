@@ -45,7 +45,6 @@ docs/man/man1/kubectl-expose.1
 docs/man/man1/kubectl-get.1
 docs/man/man1/kubectl-label.1
 docs/man/man1/kubectl-logs.1
-docs/man/man1/kubectl-namespace.1
 docs/man/man1/kubectl-options.1
 docs/man/man1/kubectl-patch.1
 docs/man/man1/kubectl-port-forward.1

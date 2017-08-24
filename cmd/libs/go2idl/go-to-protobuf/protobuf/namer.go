@@ -21,9 +21,9 @@ import (
 	"reflect"
 	"strings"
 
-	"k8s.io/kubernetes/cmd/libs/go2idl/generator"
-	"k8s.io/kubernetes/cmd/libs/go2idl/namer"
-	"k8s.io/kubernetes/cmd/libs/go2idl/types"
+	"k8s.io/gengo/generator"
+	"k8s.io/gengo/namer"
+	"k8s.io/gengo/types"
 )
 
 type localNamer struct {
@@ -94,7 +94,8 @@ func (n *protobufNamer) GoNameToProtoName(name types.Name) types.Name {
 }
 
 func protoSafePackage(name string) string {
-	return strings.Replace(name, "/", ".", -1)
+	pkg := strings.Replace(name, "/", ".", -1)
+	return strings.Replace(pkg, "-", "_", -1)
 }
 
 type typeNameSet map[types.Name]*protobufPackage
@@ -156,6 +157,21 @@ func assignGoTypeToProtoPackage(p *protobufPackage, t *types.Type, local, global
 	}
 }
 
+// isTypeApplicableToProtobuf checks to see if a type is relevant for protobuf processing.
+// Currently, it filters out functions and private types.
+func isTypeApplicableToProtobuf(t *types.Type) bool {
+	// skip functions -- we don't care about them for protobuf
+	if t.Kind == types.Func || (t.Kind == types.DeclarationOf && t.Underlying.Kind == types.Func) {
+		return false
+	}
+	// skip private types
+	if namer.IsPrivateGoName(t.Name.Name) {
+		return false
+	}
+
+	return true
+}
+
 func (n *protobufNamer) AssignTypesToPackages(c *generator.Context) error {
 	global := make(typeNameSet)
 	for _, p := range n.packages {
@@ -164,6 +180,10 @@ func (n *protobufNamer) AssignTypesToPackages(c *generator.Context) error {
 		p.Imports = NewImportTracker(p.ProtoTypeName())
 		for _, t := range c.Order {
 			if t.Name.Package != p.PackagePath {
+				continue
+			}
+			if !isTypeApplicableToProtobuf(t) {
+				// skip types that we don't care about, like functions
 				continue
 			}
 			assignGoTypeToProtoPackage(p, t, local, global, optional)

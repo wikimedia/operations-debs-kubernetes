@@ -33,7 +33,7 @@ limitations under the License.
 //     {
 //       "SelectorRegexp": "k8s[.]io",
 //       "AllowedPrefixes": [
-//         "k8s.io/kubernetes/cmd/libs/go2idl",
+//         "k8s.io/gengo/examples",
 //         "k8s.io/kubernetes/third_party"
 //       ],
 //       "ForbiddenPrefixes": [
@@ -51,15 +51,16 @@ limitations under the License.
 //   ]
 // }
 //
-// Note the secound block explicitly matches the unsafe package, and forbids it
+// Note the second block explicitly matches the unsafe package, and forbids it
 // ("" is a prefix of everything).
 package main
 
 import (
 	"os"
+	"path/filepath"
 
-	"k8s.io/kubernetes/cmd/libs/go2idl/args"
-	"k8s.io/kubernetes/cmd/libs/go2idl/import-boss/generators"
+	"k8s.io/gengo/args"
+	"k8s.io/gengo/examples/import-boss/generators"
 
 	"github.com/golang/glog"
 )
@@ -74,6 +75,7 @@ func main() {
 		"k8s.io/kubernetes/cmd/...",
 		"k8s.io/kubernetes/plugin/...",
 	}
+	arguments.GoHeaderFilePath = filepath.Join(args.DefaultSourceTree(), "k8s.io/kubernetes/hack/boilerplate/boilerplate.go.txt")
 	// arguments.VerifyOnly = true
 
 	if err := arguments.Execute(
