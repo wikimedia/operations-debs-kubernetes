@@ -20,6 +20,7 @@ export DH_OPTIONS = -v
 
 override_dh_auto_build:
 	make quick-release
+	./hack/generate-docs.sh
 
 override_dh_auto_test:
 

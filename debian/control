@@ -2,7 +2,7 @@ Source: kubernetes
 Section: admin
 Priority: optional
 Maintainer: Alexandros Kosiaris <akosiaris@wikimedia.org>
-Build-Depends: debhelper (>= 9), bash-completion, dh-systemd
+Build-Depends: debhelper (>= 9), bash-completion, dh-systemd, golang, go-bindata
 Standards-Version: 3.9.8
 Homepage: http://kubernetes.io/
 Vcs-Browser: https://anonscm.debian.org/cgit/collab-maint/kubernetes.git
