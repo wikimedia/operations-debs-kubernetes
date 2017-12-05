@@ -7,7 +7,7 @@ Index: kubernetes/build/lib/release.sh
          if [[ -z "${docker_tag}" ]]; then
            kube::log::error "git version information missing; cannot create Docker tag"
 -          return 1
-+          docker_tag='v1.7.4'
++          docker_tag='v1.7.10'
          fi
          local docker_build_path="${binary_dir}/${binary_name}.dockerbuild"
          local docker_file_path="${docker_build_path}/Dockerfile"

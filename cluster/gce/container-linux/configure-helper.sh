@@ -34,54 +34,6 @@ function create-dirs {
   fi
 }
 
-# Vars assumed:
-#   NUM_NODES
-function get-calico-node-cpu {
-  local suggested_calico_cpus=100m
-  if [[ "${NUM_NODES}" -gt "10" ]]; then
-    suggested_calico_cpus=250m
-  fi
-  if [[ "${NUM_NODES}" -gt "100" ]]; then
-    suggested_calico_cpus=500m
-  fi
-  if [[ "${NUM_NODES}" -gt "500" ]]; then
-    suggested_calico_cpus=1000m
-  fi
-  echo "${suggested_calico_cpus}"
-}
-
-# Vars assumed:
-#    NUM_NODES
-function get-calico-typha-replicas {
-  local typha_count=1
-  if [[ "${NUM_NODES}" -gt "10" ]]; then
-    typha_count=2
-  fi
-  if [[ "${NUM_NODES}" -gt "100" ]]; then
-    typha_count=3
-  fi
-  if [[ "${NUM_NODES}" -gt "250" ]]; then
-    typha_count=4
-  fi
-  if [[ "${NUM_NODES}" -gt "500" ]]; then
-    typha_count=5
-  fi
-  echo "${typha_count}"
-}
-
-# Vars assumed:
-#    NUM_NODES
-function get-calico-typha-cpu {
-  local typha_cpu=200m
-  if [[ "${NUM_NODES}" -gt "10" ]]; then
-    typha_cpu=500m
-  fi
-  if [[ "${NUM_NODES}" -gt "100" ]]; then
-    typha_cpu=1000m
-  fi
-  echo "${typha_cpu}"
-}
-
 # Create directories referenced in the kube-controller-manager manifest for
 # bindmounts. This is used under the rkt runtime to work around
 # https://github.com/kubernetes/kubernetes/issues/26816
@@ -708,7 +660,7 @@ function start-kube-proxy {
 # $4: value for variable 'cpulimit'
 # $5: pod name, which should be either etcd or etcd-events
 function prepare-etcd-manifest {
-  local host_name=$(hostname -s)
+  local host_name=${ETCD_HOSTNAME:-$(hostname -s)}
   local etcd_cluster=""
   local cluster_state="new"
   local etcd_protocol="http"
@@ -866,6 +818,9 @@ function start-kube-apiserver {
   fi
   if [[ -n "${STORAGE_MEDIA_TYPE:-}" ]]; then
     params+=" --storage-media-type=${STORAGE_MEDIA_TYPE}"
+  fi
+  if [[ -n "${KUBE_APISERVER_REQUEST_TIMEOUT_SEC:-}" ]]; then
+    params+=" --request-timeout=${KUBE_APISERVER_REQUEST_TIMEOUT_SEC}s"
   fi
   if [[ -n "${ENABLE_GARBAGE_COLLECTOR:-}" ]]; then
     params+=" --enable-garbage-collector=${ENABLE_GARBAGE_COLLECTOR}"
@@ -1263,20 +1218,9 @@ function start-kube-addons {
   if [[ "${NETWORK_POLICY_PROVIDER:-}" == "calico" ]]; then
     setup-addon-manifests "addons" "calico-policy-controller"
 
-    # Configure Calico based on cluster size and image type. 
+    # Configure Calico CNI directory.
     local -r ds_file="${dst_dir}/calico-policy-controller/calico-node-daemonset.yaml"
-    local -r typha_dep_file="${dst_dir}/calico-policy-controller/typha-deployment.yaml"
     sed -i -e "s@__CALICO_CNI_DIR__@/opt/cni/bin@g" "${ds_file}"
-    sed -i -e "s@__CALICO_NODE_CPU__@$(get-calico-node-cpu)@g" "${ds_file}"
-    sed -i -e "s@__CALICO_TYPHA_CPU__@$(get-calico-typha-cpu)@g" "${typha_dep_file}"
-    sed -i -e "s@__CALICO_TYPHA_REPLICAS__@$(get-calico-typha-replicas)@g" "${typha_dep_file}"
-  else
-    # If not configured to use Calico, the set the typha replica count to 0, but only if the 
-    # addon is present.
-    local -r typha_dep_file="${dst_dir}/calico-policy-controller/typha-deployment.yaml"
-    if [[ -e $typha_dep_file ]]; then
-      sed -i -e "s@__CALICO_TYPHA_REPLICAS__@0@g" "${typha_dep_file}"
-    fi
   fi
   if [[ "${ENABLE_DEFAULT_STORAGE_CLASS:-}" == "true" ]]; then
     setup-addon-manifests "addons" "storage-class/gce"
