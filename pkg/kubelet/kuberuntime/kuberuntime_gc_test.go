@@ -24,7 +24,7 @@ import (
 
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/assert"
-	"k8s.io/kubernetes/pkg/api/v1"
+	"k8s.io/api/core/v1"
 	runtimeapi "k8s.io/kubernetes/pkg/kubelet/apis/cri/v1alpha1/runtime"
 	kubecontainer "k8s.io/kubernetes/pkg/kubelet/container"
 	containertest "k8s.io/kubernetes/pkg/kubelet/container/testing"
@@ -34,11 +34,11 @@ func TestSandboxGC(t *testing.T) {
 	fakeRuntime, _, m, err := createTestRuntimeManager()
 	assert.NoError(t, err)
 
-	fakePodGetter := m.containerGC.podGetter.(*fakePodGetter)
-	makeGCSandbox := func(pod *v1.Pod, attempt uint32, state runtimeapi.PodSandboxState, withPodGetter bool, createdAt int64) sandboxTemplate {
-		if withPodGetter {
+	podStateProvider := m.containerGC.podStateProvider.(*fakePodStateProvider)
+	makeGCSandbox := func(pod *v1.Pod, attempt uint32, state runtimeapi.PodSandboxState, withPodStateProvider bool, createdAt int64) sandboxTemplate {
+		if withPodStateProvider {
 			// initialize the pod getter
-			fakePodGetter.pods[pod.UID] = pod
+			podStateProvider.existingPods[pod.UID] = struct{}{}
 		}
 		return sandboxTemplate{
 			pod:       pod,
@@ -162,7 +162,6 @@ func TestContainerGC(t *testing.T) {
 	fakeRuntime, _, m, err := createTestRuntimeManager()
 	assert.NoError(t, err)
 
-	fakePodGetter := m.containerGC.podGetter.(*fakePodGetter)
 	podStateProvider := m.containerGC.podStateProvider.(*fakePodStateProvider)
 	makeGCContainer := func(podName, containerName string, attempt int, createdAt int64, state runtimeapi.ContainerState) containerTemplate {
 		container := makeTestContainer(containerName, "test-image")
@@ -171,8 +170,7 @@ func TestContainerGC(t *testing.T) {
 			podStateProvider.runningPods[pod.UID] = struct{}{}
 		}
 		if podName != "deleted" {
-			// initialize the pod getter, explicitly exclude deleted pod
-			fakePodGetter.pods[pod.UID] = pod
+			podStateProvider.existingPods[pod.UID] = struct{}{}
 		}
 		return containerTemplate{
 			pod:       pod,
@@ -365,12 +363,11 @@ func TestPodLogDirectoryGC(t *testing.T) {
 	_, _, m, err := createTestRuntimeManager()
 	assert.NoError(t, err)
 	fakeOS := m.osInterface.(*containertest.FakeOS)
-	fakePodGetter := m.containerGC.podGetter.(*fakePodGetter)
 	podStateProvider := m.containerGC.podStateProvider.(*fakePodStateProvider)
 
 	// pod log directories without corresponding pods should be removed.
-	fakePodGetter.pods["123"] = makeTestPod("foo1", "new", "123", nil)
-	fakePodGetter.pods["456"] = makeTestPod("foo2", "new", "456", nil)
+	podStateProvider.existingPods["123"] = struct{}{}
+	podStateProvider.existingPods["456"] = struct{}{}
 	podStateProvider.runningPods["123"] = struct{}{}
 	podStateProvider.runningPods["456"] = struct{}{}
 	files := []string{"123", "456", "789", "012"}

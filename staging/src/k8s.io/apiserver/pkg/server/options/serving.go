@@ -32,8 +32,6 @@ import (
 	utilnet "k8s.io/apimachinery/pkg/util/net"
 	"k8s.io/apiserver/pkg/server"
 	utilflag "k8s.io/apiserver/pkg/util/flag"
-	"k8s.io/client-go/informers"
-	"k8s.io/client-go/kubernetes"
 	certutil "k8s.io/client-go/util/cert"
 )
 
@@ -45,6 +43,10 @@ type SecureServingOptions struct {
 	ServerCert GeneratableKeyCert
 	// SNICertKeys are named CertKeys for serving secure traffic with SNI support.
 	SNICertKeys []utilflag.NamedCertKey
+
+	// HTTP2MaxStreamsPerConnection is the limit that the api server imposes on each client.
+	// A value of zero means to use the default provided by golang's HTTP/2 support.
+	HTTP2MaxStreamsPerConnection int
 }
 
 type CertKey struct {
@@ -83,6 +85,10 @@ func (s *SecureServingOptions) DefaultExternalAddress() (net.IP, error) {
 }
 
 func (s *SecureServingOptions) Validate() []error {
+	if s == nil {
+		return nil
+	}
+
 	errors := []error{}
 
 	if s.BindPort < 0 || s.BindPort > 65535 {
@@ -93,6 +99,10 @@ func (s *SecureServingOptions) Validate() []error {
 }
 
 func (s *SecureServingOptions) AddFlags(fs *pflag.FlagSet) {
+	if s == nil {
+		return
+	}
+
 	fs.IPVar(&s.BindAddress, "bind-address", s.BindAddress, ""+
 		"The IP address on which to listen for the --secure-port port. The "+
 		"associated interface(s) must be reachable by the rest of the cluster, and by CLI/web "+
@@ -128,6 +138,11 @@ func (s *SecureServingOptions) AddFlags(fs *pflag.FlagSet) {
 		"trump over extracted names. For multiple key/certificate pairs, use the "+
 		"--tls-sni-cert-key multiple times. "+
 		"Examples: \"example.crt,example.key\" or \"foo.crt,foo.key:*.foo.com,foo.com\".")
+
+	fs.IntVar(&s.HTTP2MaxStreamsPerConnection, "http2-max-streams-per-connection", s.HTTP2MaxStreamsPerConnection, ""+
+		"The limit that the server gives to clients for "+
+		"the maximum number of streams in an HTTP/2 connection. "+
+		"Zero means to use golang's default.")
 }
 
 func (s *SecureServingOptions) AddDeprecatedFlags(fs *pflag.FlagSet) {
@@ -136,7 +151,12 @@ func (s *SecureServingOptions) AddDeprecatedFlags(fs *pflag.FlagSet) {
 	fs.MarkDeprecated("public-address-override", "see --bind-address instead.")
 }
 
+// ApplyTo fills up serving information in the server configuration.
 func (s *SecureServingOptions) ApplyTo(c *server.Config) error {
+	if s == nil {
+		return nil
+	}
+
 	if s.BindPort <= 0 {
 		return nil
 	}
@@ -169,13 +189,6 @@ func (s *SecureServingOptions) ApplyTo(c *server.Config) error {
 		c.SecureServingInfo.SNICerts[server.LoopbackClientServerNameOverride] = &tlsCert
 	}
 
-	// create shared informers
-	clientset, err := kubernetes.NewForConfig(c.LoopbackClientConfig)
-	if err != nil {
-		return err
-	}
-	c.SharedInformerFactory = informers.NewSharedInformerFactory(clientset, c.LoopbackClientConfig.Timeout)
-
 	return nil
 }
 
@@ -185,7 +198,8 @@ func (s *SecureServingOptions) applyServingInfoTo(c *server.Config) error {
 	}
 
 	secureServingInfo := &server.SecureServingInfo{
-		BindAddress: net.JoinHostPort(s.BindAddress.String(), strconv.Itoa(s.BindPort)),
+		BindAddress:                  net.JoinHostPort(s.BindAddress.String(), strconv.Itoa(s.BindPort)),
+		HTTP2MaxStreamsPerConnection: s.HTTP2MaxStreamsPerConnection,
 	}
 
 	serverCertFile, serverKeyFile := s.ServerCert.CertKey.CertFile, s.ServerCert.CertKey.KeyFile

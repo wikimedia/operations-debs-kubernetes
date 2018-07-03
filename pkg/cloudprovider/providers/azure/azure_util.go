@@ -24,13 +24,14 @@ import (
 	"strconv"
 	"strings"
 
-	"k8s.io/kubernetes/pkg/api/v1"
+	"k8s.io/api/core/v1"
 	"k8s.io/kubernetes/pkg/cloudprovider"
 
 	"github.com/Azure/azure-sdk-for-go/arm/compute"
 	"github.com/Azure/azure-sdk-for-go/arm/network"
 	"github.com/golang/glog"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/uuid"
 )
 
 const (
@@ -44,9 +45,11 @@ const (
 	loadBalancerRuleIDTemplate  = "/subscriptions/%s/resourceGroups/%s/providers/Microsoft.Network/loadBalancers/%s/loadBalancingRules/%s"
 	loadBalancerProbeIDTemplate = "/subscriptions/%s/resourceGroups/%s/providers/Microsoft.Network/loadBalancers/%s/probes/%s"
 	securityRuleIDTemplate      = "/subscriptions/%s/resourceGroups/%s/providers/Microsoft.Network/networkSecurityGroups/%s/securityRules/%s"
+
+	storageAccountNameMaxLength = 24
 )
 
-var providerIDRE = regexp.MustCompile(`^` + CloudProviderName + `://(.+)$`)
+var providerIDRE = regexp.MustCompile(`^` + CloudProviderName + `://(?:.*)/Microsoft.Compute/virtualMachines/(.+)$`)
 
 // returns the full identifier of a machine
 func (az *Cloud) getMachineID(machineName string) string {
@@ -248,43 +251,62 @@ outer:
 	return -1, fmt.Errorf("SecurityGroup priorities are exhausted")
 }
 
-func (az *Cloud) getIPForMachine(nodeName types.NodeName) (string, error) {
+func (az *Cloud) getIPForMachine(nodeName types.NodeName) (string, string, error) {
+	az.operationPollRateLimiter.Accept()
 	machine, exists, err := az.getVirtualMachine(nodeName)
 	if !exists {
-		return "", cloudprovider.InstanceNotFound
+		return "", "", cloudprovider.InstanceNotFound
 	}
 	if err != nil {
 		glog.Errorf("error: az.getIPForMachine(%s), az.getVirtualMachine(%s), err=%v", nodeName, nodeName, err)
-		return "", err
+		return "", "", err
 	}
 
 	nicID, err := getPrimaryInterfaceID(machine)
 	if err != nil {
 		glog.Errorf("error: az.getIPForMachine(%s), getPrimaryInterfaceID(%v), err=%v", nodeName, machine, err)
-		return "", err
+		return "", "", err
 	}
 
 	nicName, err := getLastSegment(nicID)
 	if err != nil {
 		glog.Errorf("error: az.getIPForMachine(%s), getLastSegment(%s), err=%v", nodeName, nicID, err)
-		return "", err
+		return "", "", err
 	}
 
 	az.operationPollRateLimiter.Accept()
+	glog.V(10).Infof("InterfacesClient.Get(%q): start", nicName)
 	nic, err := az.InterfacesClient.Get(az.ResourceGroup, nicName, "")
+	glog.V(10).Infof("InterfacesClient.Get(%q): end", nicName)
 	if err != nil {
 		glog.Errorf("error: az.getIPForMachine(%s), az.InterfacesClient.Get(%s, %s, %s), err=%v", nodeName, az.ResourceGroup, nicName, "", err)
-		return "", err
+		return "", "", err
 	}
 
 	ipConfig, err := getPrimaryIPConfig(nic)
 	if err != nil {
 		glog.Errorf("error: az.getIPForMachine(%s), getPrimaryIPConfig(%v), err=%v", nodeName, nic, err)
-		return "", err
+		return "", "", err
 	}
 
-	targetIP := *ipConfig.PrivateIPAddress
-	return targetIP, nil
+	privateIP := *ipConfig.PrivateIPAddress
+	publicIP := ""
+	if ipConfig.PublicIPAddress != nil && ipConfig.PublicIPAddress.ID != nil {
+		pipID := *ipConfig.PublicIPAddress.ID
+		pipName, err := getLastSegment(pipID)
+		if err != nil {
+			return "", "", fmt.Errorf("failed to publicIP name for node %q with pipID %q", nodeName, pipID)
+		}
+		pip, existsPip, err := az.getPublicIPAddress(pipName)
+		if err != nil {
+			return "", "", err
+		}
+		if existsPip {
+			publicIP = *pip.IPAddress
+		}
+	}
+
+	return privateIP, publicIP, nil
 }
 
 // splitProviderID converts a providerID to a NodeName.
@@ -349,4 +371,14 @@ func ExtractDiskData(diskData interface{}) (provisioningState string, diskState 
 		diskState = ref.(string)
 	}
 	return provisioningState, diskState, nil
+}
+
+// get a storage account by UUID
+func generateStorageAccountName(accountNamePrefix string) string {
+	uniqueID := strings.Replace(string(uuid.NewUUID()), "-", "", -1)
+	accountName := strings.ToLower(accountNamePrefix + uniqueID)
+	if len(accountName) > storageAccountNameMaxLength {
+		return accountName[:storageAccountNameMaxLength-1]
+	}
+	return accountName
 }

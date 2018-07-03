@@ -66,6 +66,10 @@ func (mounter *fakeMounter) IsLikelyNotMountPoint(file string) (bool, error) {
 	return true, nil
 }
 
+func (mounter *fakeMounter) MakeRShared(path string) error {
+	return nil
+}
+
 func TestRemoveAllOneFilesystem(t *testing.T) {
 	tests := []struct {
 		name string
@@ -160,4 +164,16 @@ func TestRemoveAllOneFilesystem(t *testing.T) {
 			t.Errorf("test %q failed: unexpected error: %v", test.name, err)
 		}
 	}
+}
+
+func (mounter *fakeMounter) PrepareSafeSubpath(subPath mount.Subpath) (newHostPath string, cleanupAction func(), err error) {
+	return "", nil, nil
+}
+
+func (mounter *fakeMounter) CleanSubPaths(_, _ string) error {
+	return nil
+}
+
+func (mounter *fakeMounter) SafeMakeDir(_, _ string, _ os.FileMode) error {
+	return nil
 }

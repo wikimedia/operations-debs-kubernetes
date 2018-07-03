@@ -26,18 +26,24 @@ import (
 )
 
 const (
-	KubeletSubsystem           = "kubelet"
-	PodWorkerLatencyKey        = "pod_worker_latency_microseconds"
-	PodStartLatencyKey         = "pod_start_latency_microseconds"
-	CgroupManagerOperationsKey = "cgroup_manager_latency_microseconds"
-	DockerOperationsLatencyKey = "docker_operations_latency_microseconds"
-	DockerOperationsKey        = "docker_operations"
-	DockerOperationsErrorsKey  = "docker_operations_errors"
-	DockerOperationsTimeoutKey = "docker_operations_timeout"
-	PodWorkerStartLatencyKey   = "pod_worker_start_latency_microseconds"
-	PLEGRelistLatencyKey       = "pleg_relist_latency_microseconds"
-	PLEGRelistIntervalKey      = "pleg_relist_interval_microseconds"
-	EvictionStatsAgeKey        = "eviction_stats_age_microseconds"
+	KubeletSubsystem             = "kubelet"
+	PodWorkerLatencyKey          = "pod_worker_latency_microseconds"
+	PodStartLatencyKey           = "pod_start_latency_microseconds"
+	CgroupManagerOperationsKey   = "cgroup_manager_latency_microseconds"
+	DockerOperationsLatencyKey   = "docker_operations_latency_microseconds"
+	DockerOperationsKey          = "docker_operations"
+	DockerOperationsErrorsKey    = "docker_operations_errors"
+	DockerOperationsTimeoutKey   = "docker_operations_timeout"
+	PodWorkerStartLatencyKey     = "pod_worker_start_latency_microseconds"
+	PLEGRelistLatencyKey         = "pleg_relist_latency_microseconds"
+	PLEGRelistIntervalKey        = "pleg_relist_interval_microseconds"
+	EvictionStatsAgeKey          = "eviction_stats_age_microseconds"
+	VolumeStatsCapacityBytesKey  = "volume_stats_capacity_bytes"
+	VolumeStatsAvailableBytesKey = "volume_stats_available_bytes"
+	VolumeStatsUsedBytesKey      = "volume_stats_used_bytes"
+	VolumeStatsInodesKey         = "volume_stats_inodes"
+	VolumeStatsInodesFreeKey     = "volume_stats_inodes_free"
+	VolumeStatsInodesUsedKey     = "volume_stats_inodes_used"
 	// Metrics keys of remote runtime operations
 	RuntimeOperationsKey        = "runtime_operations"
 	RuntimeOperationsLatencyKey = "runtime_operations_latency_microseconds"
@@ -167,7 +173,7 @@ var (
 var registerMetrics sync.Once
 
 // Register all metrics.
-func Register(containerCache kubecontainer.RuntimeCache) {
+func Register(containerCache kubecontainer.RuntimeCache, collectors ...prometheus.Collector) {
 	// Register the metrics.
 	registerMetrics.Do(func() {
 		prometheus.MustRegister(PodWorkerLatency)
@@ -186,6 +192,9 @@ func Register(containerCache kubecontainer.RuntimeCache) {
 		prometheus.MustRegister(RuntimeOperationsLatency)
 		prometheus.MustRegister(RuntimeOperationsErrors)
 		prometheus.MustRegister(EvictionStatsAge)
+		for _, collector := range collectors {
+			prometheus.MustRegister(collector)
+		}
 	})
 }
 

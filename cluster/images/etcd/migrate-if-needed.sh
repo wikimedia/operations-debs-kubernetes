@@ -82,6 +82,7 @@ if [ -e "${DATA_DIRECTORY}/${VERSION_FILE}" ]; then
   CURRENT_VERSION="$(echo $VERSION_CONTENTS | cut -d '/' -f 1)"
   CURRENT_STORAGE="$(echo $VERSION_CONTENTS | cut -d '/' -f 2)"
 fi
+ETCD_DATA_PREFIX="${ETCD_DATA_PREFIX:-/registry}"
 
 # If there is no data in DATA_DIRECTORY, this means that we are
 # starting etcd from scratch. In that case, we don't need to do
@@ -97,6 +98,9 @@ fi
 
 # Starts 'etcd' version ${START_VERSION} and writes to it:
 # 'etcd_version' -> "${START_VERSION}"
+# ETCD_CREDS may optionally be  set to provide flags for TLS credentials
+# such as '--cert-file' and '--peer-cert-file'. For a complete list of
+# flags, see https://coreos.com/etcd/docs/latest/op-guide/security.html.
 # Successful write confirms that etcd is up and running.
 # Sets ETCD_PID at the end.
 # Returns 0 if etcd was successfully started, non-0 otherwise.
@@ -104,6 +108,7 @@ start_etcd() {
   # Use random ports, so that apiserver cannot connect to etcd.
   ETCD_PORT=18629
   ETCD_PEER_PORT=2380
+  ETCD_CREDS="${ETCD_CREDS:-}"
   # Avoid collisions between etcd and event-etcd.
   case "${DATA_DIRECTORY}" in
     *event*)
@@ -122,12 +127,12 @@ start_etcd() {
   ${ETCD_CMD} \
     --name="etcd-$(hostname)" \
     --debug \
-    --force-new-cluster \
     --data-dir=${DATA_DIRECTORY} \
     --listen-client-urls http://127.0.0.1:${ETCD_PORT} \
     --advertise-client-urls http://127.0.0.1:${ETCD_PORT} \
     --listen-peer-urls http://127.0.0.1:${ETCD_PEER_PORT} \
-    --initial-advertise-peer-urls http://127.0.0.1:${ETCD_PEER_PORT} &
+    --initial-advertise-peer-urls http://127.0.0.1:${ETCD_PEER_PORT} \
+    ${ETCD_CREDS} &
   ETCD_PID=$!
   # Wait until we can write to etcd.
   for i in $(seq 240); do
@@ -154,7 +159,7 @@ ROLLBACK="${ROLLBACK:-/usr/local/bin/rollback}"
 # If we are upgrading from 2.2.1 and this is the first try for upgrade,
 # do the backup to allow restoring from it in case of failed upgrade.
 BACKUP_DIR="${DATA_DIRECTORY}/migration-backup"
-if [ "${CURRENT_VERSION}" = "2.2.1" -a ! "${CURRENT_VERSION}" != "${TARGET_VERSION}" -a -d "${BACKUP_DIR}" ]; then
+if [ "${CURRENT_VERSION}" = "2.2.1" -a "${CURRENT_VERSION}" != "${TARGET_VERSION}" -a ! -d "${BACKUP_DIR}" ]; then
   echo "Backup etcd before starting migration"
   mkdir ${BACKUP_DIR}
   ETCDCTL_CMD="/usr/local/bin/etcdctl-2.2.1"
@@ -208,12 +213,31 @@ for step in ${SUPPORTED_VERSIONS}; do
     # Create a lease and attach all keys to it.
     ${ATTACHLEASE} \
       --etcd-address http://127.0.0.1:${ETCD_PORT} \
-      --ttl-keys-prefix "${TTL_KEYS_DIRECTORY:-/registry/events}" \
+      --ttl-keys-prefix "${TTL_KEYS_DIRECTORY:-${ETCD_DATA_PREFIX}/events}" \
       --lease-duration 1h
     # Kill etcd and wait until this is down.
     stop_etcd
     CURRENT_STORAGE="etcd3"
     echo "${CURRENT_VERSION}/${CURRENT_STORAGE}" > "${DATA_DIRECTORY}/${VERSION_FILE}"
+  fi
+  if [ "$(echo ${CURRENT_VERSION} | cut -c1-4)" = "3.1." -a "${CURRENT_VERSION}" = "${step}" -a "${CURRENT_STORAGE}" = "etcd3" ]; then
+    # If we are upgrading to 3.1.* release, if the cluster was migrated
+    # from v2 version, the v2 data may still be around. So now is the
+    # time to actually remove them.
+    echo "Remove stale v2 data"
+    START_VERSION="${step}"
+    START_STORAGE="etcd3"
+    ETCDCTL_CMD="${ETCDCTL:-/usr/local/bin/etcdctl-${START_VERSION}}"
+    if ! start_etcd; then
+      echo "Starting etcd ${step} in v3 mode failed"
+      exit 1
+    fi
+    ${ETCDCTL_CMD} rm --recursive "${ETCD_DATA_PREFIX}"
+    # Kill etcd and wait until this is down.
+    stop_etcd
+    echo "Successfully remove v2 data"
+    # Also remove backup from v2->v3 migration.
+    rm -rf "${BACKUP_DIR}"
   fi
   if [ "${CURRENT_VERSION}" = "${TARGET_VERSION}" -a "${CURRENT_STORAGE}" = "${TARGET_STORAGE}" ]; then
     break

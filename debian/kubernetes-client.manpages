@@ -61,7 +61,6 @@ docs/man/man1/kubectl-run.1
 docs/man/man1/kubectl-scale.1
 docs/man/man1/kubectl-set-image.1
 docs/man/man1/kubectl-set.1
-docs/man/man1/kubectl-stop.1
 docs/man/man1/kubectl-taint.1
 docs/man/man1/kubectl-top-node.1
 docs/man/man1/kubectl-top-pod.1

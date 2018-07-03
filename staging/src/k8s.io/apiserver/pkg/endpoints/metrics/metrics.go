@@ -18,6 +18,7 @@ package metrics
 
 import (
 	"bufio"
+	//"fmt"
 	"net"
 	"net/http"
 	"regexp"
@@ -26,6 +27,7 @@ import (
 	"time"
 
 	utilnet "k8s.io/apimachinery/pkg/util/net"
+	//utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 
 	"github.com/emicklei/go-restful"
 	"github.com/prometheus/client_golang/prometheus"
@@ -39,27 +41,61 @@ var (
 			Name: "apiserver_request_count",
 			Help: "Counter of apiserver requests broken out for each verb, API resource, client, and HTTP response contentType and code.",
 		},
-		[]string{"verb", "resource", "subresource", "client", "contentType", "code"},
+		[]string{"verb", "resource", "subresource", "scope", "client", "contentType", "code"},
 	)
 	requestLatencies = prometheus.NewHistogramVec(
 		prometheus.HistogramOpts{
 			Name: "apiserver_request_latencies",
-			Help: "Response latency distribution in microseconds for each verb, resource and client.",
+			Help: "Response latency distribution in microseconds for each verb, resource and subresource.",
 			// Use buckets ranging from 125 ms to 8 seconds.
 			Buckets: prometheus.ExponentialBuckets(125000, 2.0, 7),
 		},
-		[]string{"verb", "resource", "subresource"},
+		[]string{"verb", "resource", "subresource", "scope"},
 	)
 	requestLatenciesSummary = prometheus.NewSummaryVec(
 		prometheus.SummaryOpts{
 			Name: "apiserver_request_latencies_summary",
-			Help: "Response latency summary in microseconds for each verb and resource.",
-			// Make the sliding window of 1h.
-			MaxAge: time.Hour,
+			Help: "Response latency summary in microseconds for each verb, resource and subresource.",
+			// Make the sliding window of 5h.
+			// TODO: The value for this should be based on our SLI definition (medium term).
+			MaxAge: 5 * time.Hour,
 		},
-		[]string{"verb", "resource", "subresource"},
+		[]string{"verb", "resource", "subresource", "scope"},
+	)
+	responseSizes = prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name: "apiserver_response_sizes",
+			Help: "Response size distribution in bytes for each verb, resource, subresource and scope (namespace/cluster).",
+			// Use buckets ranging from 1000 bytes (1KB) to 10^9 bytes (1GB).
+			Buckets: prometheus.ExponentialBuckets(1000, 10.0, 7),
+		},
+		[]string{"verb", "resource", "subresource", "scope"},
+	)
+	// DroppedRequests is a number of requests dropped with 'Try again later' reponse"
+	DroppedRequests = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "apiserver_dropped_requests",
+			Help: "Number of requests dropped with 'Try again later' reponse",
+		},
+		[]string{"requestKind"},
+	)
+	// Becasue of volatality of the base metric this is pre-aggregated one. Instead of reporing current usage all the time
+	// it reports maximal usage during the last second.
+	currentInflightRequests = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "apiserver_current_inflight_requests",
+			Help: "Maximal mumber of currently used inflight request limit of this apiserver per request kind in last second.",
+		},
+		[]string{"requestKind"},
 	)
 	kubectlExeRegexp = regexp.MustCompile(`^.*((?i:kubectl\.exe))`)
+)
+
+const (
+	// ReadOnlyKind is a string identifying read only request kind
+	ReadOnlyKind = "readOnly"
+	// MutatingKind is a string identifying mutating request kind
+	MutatingKind = "mutating"
 )
 
 // Register all metrics.
@@ -67,28 +103,64 @@ func Register() {
 	prometheus.MustRegister(requestCounter)
 	prometheus.MustRegister(requestLatencies)
 	prometheus.MustRegister(requestLatenciesSummary)
+	prometheus.MustRegister(responseSizes)
+	prometheus.MustRegister(DroppedRequests)
+	prometheus.MustRegister(currentInflightRequests)
 }
 
-func Monitor(verb, resource, subresource *string, client, contentType string, httpCode int, reqStart time.Time) {
+func UpdateInflightRequestMetrics(nonmutating, mutating int) {
+	currentInflightRequests.WithLabelValues(ReadOnlyKind).Set(float64(nonmutating))
+	currentInflightRequests.WithLabelValues(MutatingKind).Set(float64(mutating))
+}
+
+// Monitor records a request to the apiserver endpoints that follow the Kubernetes API conventions.  verb must be
+// uppercase to be backwards compatible with existing monitoring tooling.
+func Monitor(verb, resource, subresource, scope, client, contentType string, httpCode, respSize int, reqStart time.Time) {
 	elapsed := float64((time.Since(reqStart)) / time.Microsecond)
-	requestCounter.WithLabelValues(*verb, *resource, *subresource, client, contentType, codeToString(httpCode)).Inc()
-	requestLatencies.WithLabelValues(*verb, *resource, *subresource).Observe(elapsed)
-	requestLatenciesSummary.WithLabelValues(*verb, *resource, *subresource).Observe(elapsed)
+	requestCounter.WithLabelValues(verb, resource, subresource, scope, client, contentType, codeToString(httpCode)).Inc()
+	requestLatencies.WithLabelValues(verb, resource, subresource, scope).Observe(elapsed)
+	requestLatenciesSummary.WithLabelValues(verb, resource, subresource, scope).Observe(elapsed)
+	// We are only interested in response sizes of read requests.
+	if verb == "GET" || verb == "LIST" {
+		responseSizes.WithLabelValues(verb, resource, subresource, scope).Observe(float64(respSize))
+	}
+}
+
+// MonitorRequest handles standard transformations for client and the reported verb and then invokes Monitor to record
+// a request. verb must be uppercase to be backwards compatible with existing monitoring tooling.
+func MonitorRequest(request *http.Request, verb, resource, subresource, scope, contentType string, httpCode, respSize int, reqStart time.Time) {
+	reportedVerb := verb
+	if verb == "LIST" {
+		// see apimachinery/pkg/runtime/conversion.go Convert_Slice_string_To_bool
+		if values := request.URL.Query()["watch"]; len(values) > 0 {
+			if value := strings.ToLower(values[0]); value != "0" && value != "false" {
+				reportedVerb = "WATCH"
+			}
+		}
+	}
+	// normalize the legacy WATCHLIST to WATCH to ensure users aren't surprised by metrics
+	if verb == "WATCHLIST" {
+		reportedVerb = "WATCH"
+	}
+
+	client := cleanUserAgent(utilnet.GetHTTPClient(request))
+	Monitor(reportedVerb, resource, subresource, scope, client, contentType, httpCode, respSize, reqStart)
 }
 
 func Reset() {
 	requestCounter.Reset()
 	requestLatencies.Reset()
 	requestLatenciesSummary.Reset()
+	responseSizes.Reset()
 }
 
 // InstrumentRouteFunc works like Prometheus' InstrumentHandlerFunc but wraps
 // the go-restful RouteFunction instead of a HandlerFunc
-func InstrumentRouteFunc(verb, resource, subresource string, routeFunc restful.RouteFunction) restful.RouteFunction {
+func InstrumentRouteFunc(verb, resource, subresource, scope string, routeFunc restful.RouteFunction) restful.RouteFunction {
 	return restful.RouteFunction(func(request *restful.Request, response *restful.Response) {
 		now := time.Now()
 
-		delegate := &responseWriterDelegator{ResponseWriter: response.ResponseWriter}
+		delegate := &ResponseWriterDelegator{ResponseWriter: response.ResponseWriter}
 
 		_, cn := response.ResponseWriter.(http.CloseNotifier)
 		_, fl := response.ResponseWriter.(http.Flusher)
@@ -103,11 +175,7 @@ func InstrumentRouteFunc(verb, resource, subresource string, routeFunc restful.R
 
 		routeFunc(request, response)
 
-		reportedVerb := verb
-		if verb == "LIST" && strings.ToLower(request.QueryParameter("watch")) == "true" {
-			reportedVerb = "WATCH"
-		}
-		Monitor(&reportedVerb, &resource, &subresource, cleanUserAgent(utilnet.GetHTTPClient(request.Request)), rw.Header().Get("Content-Type"), delegate.status, now)
+		MonitorRequest(request.Request, verb, resource, subresource, scope, delegate.Header().Get("Content-Type"), delegate.Status(), delegate.ContentLength(), now)
 	})
 }
 
@@ -121,7 +189,8 @@ func cleanUserAgent(ua string) string {
 	return ua
 }
 
-type responseWriterDelegator struct {
+// ResponseWriterDelegator interface wraps http.ResponseWriter to additionally record content-length, status-code, etc.
+type ResponseWriterDelegator struct {
 	http.ResponseWriter
 
 	status      int
@@ -129,13 +198,13 @@ type responseWriterDelegator struct {
 	wroteHeader bool
 }
 
-func (r *responseWriterDelegator) WriteHeader(code int) {
+func (r *ResponseWriterDelegator) WriteHeader(code int) {
 	r.status = code
 	r.wroteHeader = true
 	r.ResponseWriter.WriteHeader(code)
 }
 
-func (r *responseWriterDelegator) Write(b []byte) (int, error) {
+func (r *ResponseWriterDelegator) Write(b []byte) (int, error) {
 	if !r.wroteHeader {
 		r.WriteHeader(http.StatusOK)
 	}
@@ -144,8 +213,16 @@ func (r *responseWriterDelegator) Write(b []byte) (int, error) {
 	return n, err
 }
 
+func (r *ResponseWriterDelegator) Status() int {
+	return r.status
+}
+
+func (r *ResponseWriterDelegator) ContentLength() int {
+	return int(r.written)
+}
+
 type fancyResponseWriterDelegator struct {
-	*responseWriterDelegator
+	*ResponseWriterDelegator
 }
 
 func (f *fancyResponseWriterDelegator) CloseNotify() <-chan bool {
