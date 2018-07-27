@@ -19,6 +19,7 @@ limitations under the License.
 package mount
 
 import (
+	"errors"
 	"os"
 )
 
@@ -68,6 +69,22 @@ func (*NsenterMounter) GetDeviceNameFromMount(mountPath, pluginDir string) (stri
 
 func (*NsenterMounter) MakeRShared(path string) error {
 	return nil
+}
+
+func (*NsenterMounter) GetFileType(_ string) (FileType, error) {
+	return FileType("fake"), errors.New("not implemented")
+}
+
+func (*NsenterMounter) MakeDir(pathname string) error {
+	return nil
+}
+
+func (*NsenterMounter) MakeFile(pathname string) error {
+	return nil
+}
+
+func (*NsenterMounter) ExistsPath(pathname string) bool {
+	return true
 }
 
 func (*NsenterMounter) SafeMakeDir(pathname string, base string, perm os.FileMode) error {

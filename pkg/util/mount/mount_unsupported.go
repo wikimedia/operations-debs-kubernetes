@@ -19,6 +19,7 @@ limitations under the License.
 package mount
 
 import (
+	"errors"
 	"os"
 )
 
@@ -86,11 +87,27 @@ func (mounter *Mounter) MakeRShared(path string) error {
 }
 
 func (mounter *SafeFormatAndMount) formatAndMount(source string, target string, fstype string, options []string) error {
-	return nil
+	return mounter.Interface.Mount(source, target, fstype, options)
 }
 
 func (mounter *SafeFormatAndMount) diskLooksUnformatted(disk string) (bool, error) {
 	return true, nil
+}
+
+func (mounter *Mounter) GetFileType(pathname string) (FileType, error) {
+	return FileType("fake"), errors.New("not implemented")
+}
+
+func (mounter *Mounter) MakeDir(pathname string) error {
+	return nil
+}
+
+func (mounter *Mounter) MakeFile(pathname string) error {
+	return nil
+}
+
+func (mounter *Mounter) ExistsPath(pathname string) bool {
+	return true
 }
 
 func (mounter *Mounter) PrepareSafeSubpath(subPath Subpath) (newHostPath string, cleanupAction func(), err error) {

@@ -95,7 +95,7 @@ function get-cluster-ip-range {
   if [[ "${NUM_NODES}" -gt 4000 ]]; then
     suggested_range="10.64.0.0/11"
   fi
-  echo "${suggested_range}" 
+  echo "${suggested_range}"
 }
 
 # Calculate ip alias range based on max number of pods.
@@ -114,8 +114,4 @@ function get-alias-range-size() {
   exit 1
 }
 
-if [[ "${FEDERATION:-}" == true ]]; then
-    NODE_SCOPES="${NODE_SCOPES:-compute-rw,monitoring,logging-write,storage-ro,https://www.googleapis.com/auth/ndev.clouddns.readwrite}"
-else
-    NODE_SCOPES="${NODE_SCOPES:-compute-rw,monitoring,logging-write,storage-ro}"
-fi
+NODE_SCOPES="${NODE_SCOPES:-monitoring,logging-write,storage-ro}"

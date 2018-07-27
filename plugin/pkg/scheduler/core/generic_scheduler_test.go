@@ -30,6 +30,7 @@ import (
 	extensions "k8s.io/api/extensions/v1beta1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/kubernetes/plugin/pkg/scheduler/algorithm"
@@ -197,10 +198,11 @@ func TestGenericScheduler(t *testing.T) {
 			prioritizers: []algorithm.PriorityConfig{{Map: EqualPriorityMap, Weight: 1}},
 			nodes:        []string{"machine1", "machine2"},
 			expectsErr:   true,
-			pod:          &v1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "2"}},
+			pod:          &v1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "2", UID: types.UID("2")}},
 			name:         "test 1",
 			wErr: &FitError{
-				Pod: &v1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "2"}},
+				Pod:         &v1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "2", UID: types.UID("2")}},
+				NumAllNodes: 2,
 				FailedPredicates: FailedPredicateMap{
 					"machine1": []algorithm.PredicateFailureReason{algorithmpredicates.ErrFakePredicate},
 					"machine2": []algorithm.PredicateFailureReason{algorithmpredicates.ErrFakePredicate},
@@ -210,7 +212,7 @@ func TestGenericScheduler(t *testing.T) {
 			predicates:    map[string]algorithm.FitPredicate{"true": truePredicate},
 			prioritizers:  []algorithm.PriorityConfig{{Map: EqualPriorityMap, Weight: 1}},
 			nodes:         []string{"machine1", "machine2"},
-			pod:           &v1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "ignore"}},
+			pod:           &v1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "ignore", UID: types.UID("ignore")}},
 			expectedHosts: sets.NewString("machine1", "machine2"),
 			name:          "test 2",
 			wErr:          nil,
@@ -220,7 +222,7 @@ func TestGenericScheduler(t *testing.T) {
 			predicates:    map[string]algorithm.FitPredicate{"matches": matchesPredicate},
 			prioritizers:  []algorithm.PriorityConfig{{Map: EqualPriorityMap, Weight: 1}},
 			nodes:         []string{"machine1", "machine2"},
-			pod:           &v1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "machine2"}},
+			pod:           &v1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "machine2", UID: types.UID("machine2")}},
 			expectedHosts: sets.NewString("machine2"),
 			name:          "test 3",
 			wErr:          nil,
@@ -229,7 +231,7 @@ func TestGenericScheduler(t *testing.T) {
 			predicates:    map[string]algorithm.FitPredicate{"true": truePredicate},
 			prioritizers:  []algorithm.PriorityConfig{{Function: numericPriority, Weight: 1}},
 			nodes:         []string{"3", "2", "1"},
-			pod:           &v1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "ignore"}},
+			pod:           &v1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "ignore", UID: types.UID("ignore")}},
 			expectedHosts: sets.NewString("3"),
 			name:          "test 4",
 			wErr:          nil,
@@ -238,7 +240,7 @@ func TestGenericScheduler(t *testing.T) {
 			predicates:    map[string]algorithm.FitPredicate{"matches": matchesPredicate},
 			prioritizers:  []algorithm.PriorityConfig{{Function: numericPriority, Weight: 1}},
 			nodes:         []string{"3", "2", "1"},
-			pod:           &v1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "2"}},
+			pod:           &v1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "2", UID: types.UID("2")}},
 			expectedHosts: sets.NewString("2"),
 			name:          "test 5",
 			wErr:          nil,
@@ -247,7 +249,7 @@ func TestGenericScheduler(t *testing.T) {
 			predicates:    map[string]algorithm.FitPredicate{"true": truePredicate},
 			prioritizers:  []algorithm.PriorityConfig{{Function: numericPriority, Weight: 1}, {Function: reverseNumericPriority, Weight: 2}},
 			nodes:         []string{"3", "2", "1"},
-			pod:           &v1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "2"}},
+			pod:           &v1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "2", UID: types.UID("2")}},
 			expectedHosts: sets.NewString("1"),
 			name:          "test 6",
 			wErr:          nil,
@@ -256,11 +258,12 @@ func TestGenericScheduler(t *testing.T) {
 			predicates:   map[string]algorithm.FitPredicate{"true": truePredicate, "false": falsePredicate},
 			prioritizers: []algorithm.PriorityConfig{{Function: numericPriority, Weight: 1}},
 			nodes:        []string{"3", "2", "1"},
-			pod:          &v1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "2"}},
+			pod:          &v1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "2", UID: types.UID("2")}},
 			expectsErr:   true,
 			name:         "test 7",
 			wErr: &FitError{
-				Pod: &v1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "2"}},
+				Pod:         &v1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "2", UID: types.UID("2")}},
+				NumAllNodes: 3,
 				FailedPredicates: FailedPredicateMap{
 					"3": []algorithm.PredicateFailureReason{algorithmpredicates.ErrFakePredicate},
 					"2": []algorithm.PredicateFailureReason{algorithmpredicates.ErrFakePredicate},
@@ -275,7 +278,7 @@ func TestGenericScheduler(t *testing.T) {
 			},
 			pods: []*v1.Pod{
 				{
-					ObjectMeta: metav1.ObjectMeta{Name: "2"},
+					ObjectMeta: metav1.ObjectMeta{Name: "2", UID: types.UID("2")},
 					Spec: v1.PodSpec{
 						NodeName: "2",
 					},
@@ -284,13 +287,14 @@ func TestGenericScheduler(t *testing.T) {
 					},
 				},
 			},
-			pod:          &v1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "2"}},
+			pod:          &v1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "2", UID: types.UID("2")}},
 			prioritizers: []algorithm.PriorityConfig{{Function: numericPriority, Weight: 1}},
 			nodes:        []string{"1", "2"},
 			expectsErr:   true,
 			name:         "test 8",
 			wErr: &FitError{
-				Pod: &v1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "2"}},
+				Pod:         &v1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "2", UID: types.UID("2")}},
+				NumAllNodes: 2,
 				FailedPredicates: FailedPredicateMap{
 					"1": []algorithm.PredicateFailureReason{algorithmpredicates.ErrFakePredicate},
 					"2": []algorithm.PredicateFailureReason{algorithmpredicates.ErrFakePredicate},
@@ -308,7 +312,7 @@ func TestGenericScheduler(t *testing.T) {
 		}
 
 		scheduler := NewGenericScheduler(
-			cache, nil, test.predicates, algorithm.EmptyPredicateMetadataProducer, test.prioritizers, algorithm.EmptyMetadataProducer, []algorithm.SchedulerExtender{})
+			cache, nil, NewSchedulingQueue(), test.predicates, algorithm.EmptyPredicateMetadataProducer, test.prioritizers, algorithm.EmptyMetadataProducer, []algorithm.SchedulerExtender{}, nil)
 		machine, err := scheduler.Schedule(test.pod, schedulertesting.FakeNodeLister(makeNodeList(test.nodes)))
 
 		if !reflect.DeepEqual(err, test.wErr) {
@@ -328,7 +332,7 @@ func TestFindFitAllError(t *testing.T) {
 		"2": schedulercache.NewNodeInfo(),
 		"1": schedulercache.NewNodeInfo(),
 	}
-	_, predicateMap, err := findNodesThatFit(&v1.Pod{}, nodeNameToInfo, makeNodeList(nodes), predicates, nil, algorithm.EmptyPredicateMetadataProducer, nil)
+	_, predicateMap, err := findNodesThatFit(&v1.Pod{}, nodeNameToInfo, makeNodeList(nodes), predicates, nil, algorithm.EmptyPredicateMetadataProducer, nil, nil)
 
 	if err != nil {
 		t.Errorf("unexpected error: %v", err)
@@ -352,7 +356,7 @@ func TestFindFitAllError(t *testing.T) {
 func TestFindFitSomeError(t *testing.T) {
 	nodes := []string{"3", "2", "1"}
 	predicates := map[string]algorithm.FitPredicate{"true": truePredicate, "match": matchesPredicate}
-	pod := &v1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "1"}}
+	pod := &v1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "1", UID: types.UID("1")}}
 	nodeNameToInfo := map[string]*schedulercache.NodeInfo{
 		"3": schedulercache.NewNodeInfo(),
 		"2": schedulercache.NewNodeInfo(),
@@ -362,7 +366,7 @@ func TestFindFitSomeError(t *testing.T) {
 		nodeNameToInfo[name].SetNode(&v1.Node{ObjectMeta: metav1.ObjectMeta{Name: name}})
 	}
 
-	_, predicateMap, err := findNodesThatFit(pod, nodeNameToInfo, makeNodeList(nodes), predicates, nil, algorithm.EmptyPredicateMetadataProducer, nil)
+	_, predicateMap, err := findNodesThatFit(pod, nodeNameToInfo, makeNodeList(nodes), predicates, nil, algorithm.EmptyPredicateMetadataProducer, nil, nil)
 	if err != nil {
 		t.Errorf("unexpected error: %v", err)
 	}
@@ -406,15 +410,16 @@ func makeNode(node string, milliCPU, memory int64) *v1.Node {
 
 func TestHumanReadableFitError(t *testing.T) {
 	err := &FitError{
-		Pod: &v1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "2"}},
+		Pod:         &v1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "2", UID: types.UID("2")}},
+		NumAllNodes: 3,
 		FailedPredicates: FailedPredicateMap{
 			"1": []algorithm.PredicateFailureReason{algorithmpredicates.ErrNodeUnderMemoryPressure},
 			"2": []algorithm.PredicateFailureReason{algorithmpredicates.ErrNodeUnderDiskPressure},
 			"3": []algorithm.PredicateFailureReason{algorithmpredicates.ErrNodeUnderDiskPressure},
 		},
 	}
-	if strings.Contains(err.Error(), NoNodeAvailableMsg) {
-		if strings.Contains(err.Error(), "NodeUnderDiskPressure (2)") && strings.Contains(err.Error(), "NodeUnderMemoryPressure (1)") {
+	if strings.Contains(err.Error(), "0/3 nodes are available") {
+		if strings.Contains(err.Error(), "2 NodeUnderDiskPressure") && strings.Contains(err.Error(), "1 NodeUnderMemoryPressure") {
 			return
 		}
 	}
@@ -518,18 +523,26 @@ func TestZeroRequest(t *testing.T) {
 		priorityConfigs := []algorithm.PriorityConfig{
 			{Map: algorithmpriorities.LeastRequestedPriorityMap, Weight: 1},
 			{Map: algorithmpriorities.BalancedResourceAllocationMap, Weight: 1},
-			{
-				Function: algorithmpriorities.NewSelectorSpreadPriority(
-					schedulertesting.FakeServiceLister([]*v1.Service{}),
-					schedulertesting.FakeControllerLister([]*v1.ReplicationController{}),
-					schedulertesting.FakeReplicaSetLister([]*extensions.ReplicaSet{}),
-					schedulertesting.FakeStatefulSetLister([]*apps.StatefulSet{})),
-				Weight: 1,
-			},
 		}
+		selectorSpreadPriorityMap, selectorSpreadPriorityReduce := algorithmpriorities.NewSelectorSpreadPriority(
+			schedulertesting.FakeServiceLister([]*v1.Service{}),
+			schedulertesting.FakeControllerLister([]*v1.ReplicationController{}),
+			schedulertesting.FakeReplicaSetLister([]*extensions.ReplicaSet{}),
+			schedulertesting.FakeStatefulSetLister([]*apps.StatefulSet{}))
+		pc := algorithm.PriorityConfig{Map: selectorSpreadPriorityMap, Reduce: selectorSpreadPriorityReduce, Weight: 1}
+		priorityConfigs = append(priorityConfigs, pc)
+
 		nodeNameToInfo := schedulercache.CreateNodeNameToInfoMap(test.pods, test.nodes)
+
+		mataDataProducer := algorithmpriorities.NewPriorityMetadataFactory(
+			schedulertesting.FakeServiceLister([]*v1.Service{}),
+			schedulertesting.FakeControllerLister([]*v1.ReplicationController{}),
+			schedulertesting.FakeReplicaSetLister([]*extensions.ReplicaSet{}),
+			schedulertesting.FakeStatefulSetLister([]*apps.StatefulSet{}))
+		mataData := mataDataProducer(test.pod, nodeNameToInfo)
+
 		list, err := PrioritizeNodes(
-			test.pod, nodeNameToInfo, algorithm.EmptyMetadataProducer, priorityConfigs,
+			test.pod, nodeNameToInfo, mataData, priorityConfigs,
 			schedulertesting.FakeNodeLister(test.nodes), []algorithm.SchedulerExtender{})
 		if err != nil {
 			t.Errorf("unexpected error: %v", err)
@@ -548,11 +561,11 @@ func TestZeroRequest(t *testing.T) {
 	}
 }
 
-func printNodeToPods(nodeToPods map[*v1.Node][]*v1.Pod) string {
+func printNodeToVictims(nodeToVictims map[*v1.Node]*Victims) string {
 	var output string
-	for node, pods := range nodeToPods {
+	for node, victims := range nodeToVictims {
 		output += node.Name + ": ["
-		for _, pod := range pods {
+		for _, pod := range victims.pods {
 			output += pod.Name + ", "
 		}
 		output += "]"
@@ -560,15 +573,15 @@ func printNodeToPods(nodeToPods map[*v1.Node][]*v1.Pod) string {
 	return output
 }
 
-func checkPreemptionVictims(testName string, expected map[string]map[string]bool, nodeToPods map[*v1.Node][]*v1.Pod) error {
+func checkPreemptionVictims(testName string, expected map[string]map[string]bool, nodeToPods map[*v1.Node]*Victims) error {
 	if len(expected) == len(nodeToPods) {
-		for k, pods := range nodeToPods {
+		for k, victims := range nodeToPods {
 			if expPods, ok := expected[k.Name]; ok {
-				if len(pods) != len(expPods) {
-					return fmt.Errorf("test [%v]: unexpected number of pods. expected: %v, got: %v", testName, expected, printNodeToPods(nodeToPods))
+				if len(victims.pods) != len(expPods) {
+					return fmt.Errorf("test [%v]: unexpected number of pods. expected: %v, got: %v", testName, expected, printNodeToVictims(nodeToPods))
 				}
 				prevPriority := int32(math.MaxInt32)
-				for _, p := range pods {
+				for _, p := range victims.pods {
 					// Check that pods are sorted by their priority.
 					if *p.Spec.Priority > prevPriority {
 						return fmt.Errorf("test [%v]: pod %v of node %v was not sorted by priority", testName, p.Name, k)
@@ -579,11 +592,11 @@ func checkPreemptionVictims(testName string, expected map[string]map[string]bool
 					}
 				}
 			} else {
-				return fmt.Errorf("test [%v]: unexpected machines. expected: %v, got: %v", testName, expected, printNodeToPods(nodeToPods))
+				return fmt.Errorf("test [%v]: unexpected machines. expected: %v, got: %v", testName, expected, printNodeToVictims(nodeToPods))
 			}
 		}
 	} else {
-		return fmt.Errorf("test [%v]: unexpected number of machines. expected: %v, got: %v", testName, expected, printNodeToPods(nodeToPods))
+		return fmt.Errorf("test [%v]: unexpected number of machines. expected: %v, got: %v", testName, expected, printNodeToVictims(nodeToPods))
 	}
 	return nil
 }
@@ -665,74 +678,74 @@ func TestSelectNodesForPreemption(t *testing.T) {
 			name:       "a pod that does not fit on any machine",
 			predicates: map[string]algorithm.FitPredicate{"matches": falsePredicate},
 			nodes:      []string{"machine1", "machine2"},
-			pod:        &v1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "new"}, Spec: v1.PodSpec{Priority: &highPriority}},
+			pod:        &v1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "new", UID: types.UID("new")}, Spec: v1.PodSpec{Priority: &highPriority}},
 			pods: []*v1.Pod{
-				{ObjectMeta: metav1.ObjectMeta{Name: "a"}, Spec: v1.PodSpec{Priority: &midPriority, NodeName: "machine1"}},
-				{ObjectMeta: metav1.ObjectMeta{Name: "b"}, Spec: v1.PodSpec{Priority: &midPriority, NodeName: "machine2"}}},
+				{ObjectMeta: metav1.ObjectMeta{Name: "a", UID: types.UID("a")}, Spec: v1.PodSpec{Priority: &midPriority, NodeName: "machine1"}},
+				{ObjectMeta: metav1.ObjectMeta{Name: "b", UID: types.UID("b")}, Spec: v1.PodSpec{Priority: &midPriority, NodeName: "machine2"}}},
 			expected: map[string]map[string]bool{},
 		},
 		{
 			name:       "a pod that fits with no preemption",
 			predicates: map[string]algorithm.FitPredicate{"matches": truePredicate},
 			nodes:      []string{"machine1", "machine2"},
-			pod:        &v1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "new"}, Spec: v1.PodSpec{Priority: &highPriority}},
+			pod:        &v1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "new", UID: types.UID("new")}, Spec: v1.PodSpec{Priority: &highPriority}},
 			pods: []*v1.Pod{
-				{ObjectMeta: metav1.ObjectMeta{Name: "a"}, Spec: v1.PodSpec{Priority: &midPriority, NodeName: "machine1"}},
-				{ObjectMeta: metav1.ObjectMeta{Name: "b"}, Spec: v1.PodSpec{Priority: &midPriority, NodeName: "machine2"}}},
+				{ObjectMeta: metav1.ObjectMeta{Name: "a", UID: types.UID("a")}, Spec: v1.PodSpec{Priority: &midPriority, NodeName: "machine1"}},
+				{ObjectMeta: metav1.ObjectMeta{Name: "b", UID: types.UID("b")}, Spec: v1.PodSpec{Priority: &midPriority, NodeName: "machine2"}}},
 			expected: map[string]map[string]bool{"machine1": {}, "machine2": {}},
 		},
 		{
 			name:       "a pod that fits on one machine with no preemption",
 			predicates: map[string]algorithm.FitPredicate{"matches": matchesPredicate},
 			nodes:      []string{"machine1", "machine2"},
-			pod:        &v1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "machine1"}, Spec: v1.PodSpec{Priority: &highPriority}},
+			pod:        &v1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "machine1", UID: types.UID("machine1")}, Spec: v1.PodSpec{Priority: &highPriority}},
 			pods: []*v1.Pod{
-				{ObjectMeta: metav1.ObjectMeta{Name: "a"}, Spec: v1.PodSpec{Priority: &midPriority, NodeName: "machine1"}},
-				{ObjectMeta: metav1.ObjectMeta{Name: "b"}, Spec: v1.PodSpec{Priority: &midPriority, NodeName: "machine2"}}},
+				{ObjectMeta: metav1.ObjectMeta{Name: "a", UID: types.UID("a")}, Spec: v1.PodSpec{Priority: &midPriority, NodeName: "machine1"}},
+				{ObjectMeta: metav1.ObjectMeta{Name: "b", UID: types.UID("b")}, Spec: v1.PodSpec{Priority: &midPriority, NodeName: "machine2"}}},
 			expected: map[string]map[string]bool{"machine1": {}},
 		},
 		{
 			name:       "a pod that fits on both machines when lower priority pods are preempted",
 			predicates: map[string]algorithm.FitPredicate{"matches": algorithmpredicates.PodFitsResources},
 			nodes:      []string{"machine1", "machine2"},
-			pod:        &v1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "machine1"}, Spec: v1.PodSpec{Containers: largeContainers, Priority: &highPriority}},
+			pod:        &v1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "machine1", UID: types.UID("machine1")}, Spec: v1.PodSpec{Containers: largeContainers, Priority: &highPriority}},
 			pods: []*v1.Pod{
-				{ObjectMeta: metav1.ObjectMeta{Name: "a"}, Spec: v1.PodSpec{Containers: largeContainers, Priority: &midPriority, NodeName: "machine1"}},
-				{ObjectMeta: metav1.ObjectMeta{Name: "b"}, Spec: v1.PodSpec{Containers: largeContainers, Priority: &midPriority, NodeName: "machine2"}}},
+				{ObjectMeta: metav1.ObjectMeta{Name: "a", UID: types.UID("a")}, Spec: v1.PodSpec{Containers: largeContainers, Priority: &midPriority, NodeName: "machine1"}},
+				{ObjectMeta: metav1.ObjectMeta{Name: "b", UID: types.UID("b")}, Spec: v1.PodSpec{Containers: largeContainers, Priority: &midPriority, NodeName: "machine2"}}},
 			expected: map[string]map[string]bool{"machine1": {"a": true}, "machine2": {"b": true}},
 		},
 		{
 			name:       "a pod that would fit on the machines, but other pods running are higher priority",
 			predicates: map[string]algorithm.FitPredicate{"matches": algorithmpredicates.PodFitsResources},
 			nodes:      []string{"machine1", "machine2"},
-			pod:        &v1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "machine1"}, Spec: v1.PodSpec{Containers: largeContainers, Priority: &lowPriority}},
+			pod:        &v1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "machine1", UID: types.UID("machine1")}, Spec: v1.PodSpec{Containers: largeContainers, Priority: &lowPriority}},
 			pods: []*v1.Pod{
-				{ObjectMeta: metav1.ObjectMeta{Name: "a"}, Spec: v1.PodSpec{Containers: largeContainers, Priority: &midPriority, NodeName: "machine1"}},
-				{ObjectMeta: metav1.ObjectMeta{Name: "b"}, Spec: v1.PodSpec{Containers: largeContainers, Priority: &midPriority, NodeName: "machine2"}}},
+				{ObjectMeta: metav1.ObjectMeta{Name: "a", UID: types.UID("a")}, Spec: v1.PodSpec{Containers: largeContainers, Priority: &midPriority, NodeName: "machine1"}},
+				{ObjectMeta: metav1.ObjectMeta{Name: "b", UID: types.UID("b")}, Spec: v1.PodSpec{Containers: largeContainers, Priority: &midPriority, NodeName: "machine2"}}},
 			expected: map[string]map[string]bool{},
 		},
 		{
 			name:       "medium priority pod is preempted, but lower priority one stays as it is small",
 			predicates: map[string]algorithm.FitPredicate{"matches": algorithmpredicates.PodFitsResources},
 			nodes:      []string{"machine1", "machine2"},
-			pod:        &v1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "machine1"}, Spec: v1.PodSpec{Containers: largeContainers, Priority: &highPriority}},
+			pod:        &v1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "machine1", UID: types.UID("machine1")}, Spec: v1.PodSpec{Containers: largeContainers, Priority: &highPriority}},
 			pods: []*v1.Pod{
-				{ObjectMeta: metav1.ObjectMeta{Name: "a"}, Spec: v1.PodSpec{Containers: smallContainers, Priority: &lowPriority, NodeName: "machine1"}},
-				{ObjectMeta: metav1.ObjectMeta{Name: "b"}, Spec: v1.PodSpec{Containers: largeContainers, Priority: &midPriority, NodeName: "machine1"}},
-				{ObjectMeta: metav1.ObjectMeta{Name: "c"}, Spec: v1.PodSpec{Containers: largeContainers, Priority: &midPriority, NodeName: "machine2"}}},
+				{ObjectMeta: metav1.ObjectMeta{Name: "a", UID: types.UID("a")}, Spec: v1.PodSpec{Containers: smallContainers, Priority: &lowPriority, NodeName: "machine1"}},
+				{ObjectMeta: metav1.ObjectMeta{Name: "b", UID: types.UID("b")}, Spec: v1.PodSpec{Containers: largeContainers, Priority: &midPriority, NodeName: "machine1"}},
+				{ObjectMeta: metav1.ObjectMeta{Name: "c", UID: types.UID("c")}, Spec: v1.PodSpec{Containers: largeContainers, Priority: &midPriority, NodeName: "machine2"}}},
 			expected: map[string]map[string]bool{"machine1": {"b": true}, "machine2": {"c": true}},
 		},
 		{
 			name:       "mixed priority pods are preempted",
 			predicates: map[string]algorithm.FitPredicate{"matches": algorithmpredicates.PodFitsResources},
 			nodes:      []string{"machine1", "machine2"},
-			pod:        &v1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "machine1"}, Spec: v1.PodSpec{Containers: largeContainers, Priority: &highPriority}},
+			pod:        &v1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "machine1", UID: types.UID("machine1")}, Spec: v1.PodSpec{Containers: largeContainers, Priority: &highPriority}},
 			pods: []*v1.Pod{
-				{ObjectMeta: metav1.ObjectMeta{Name: "a"}, Spec: v1.PodSpec{Containers: smallContainers, Priority: &midPriority, NodeName: "machine1"}},
-				{ObjectMeta: metav1.ObjectMeta{Name: "b"}, Spec: v1.PodSpec{Containers: smallContainers, Priority: &lowPriority, NodeName: "machine1"}},
-				{ObjectMeta: metav1.ObjectMeta{Name: "c"}, Spec: v1.PodSpec{Containers: mediumContainers, Priority: &midPriority, NodeName: "machine1"}},
-				{ObjectMeta: metav1.ObjectMeta{Name: "d"}, Spec: v1.PodSpec{Containers: smallContainers, Priority: &highPriority, NodeName: "machine1"}},
-				{ObjectMeta: metav1.ObjectMeta{Name: "e"}, Spec: v1.PodSpec{Containers: largeContainers, Priority: &highPriority, NodeName: "machine2"}}},
+				{ObjectMeta: metav1.ObjectMeta{Name: "a", UID: types.UID("a")}, Spec: v1.PodSpec{Containers: smallContainers, Priority: &midPriority, NodeName: "machine1"}},
+				{ObjectMeta: metav1.ObjectMeta{Name: "b", UID: types.UID("b")}, Spec: v1.PodSpec{Containers: smallContainers, Priority: &lowPriority, NodeName: "machine1"}},
+				{ObjectMeta: metav1.ObjectMeta{Name: "c", UID: types.UID("c")}, Spec: v1.PodSpec{Containers: mediumContainers, Priority: &midPriority, NodeName: "machine1"}},
+				{ObjectMeta: metav1.ObjectMeta{Name: "d", UID: types.UID("d")}, Spec: v1.PodSpec{Containers: smallContainers, Priority: &highPriority, NodeName: "machine1"}},
+				{ObjectMeta: metav1.ObjectMeta{Name: "e", UID: types.UID("e")}, Spec: v1.PodSpec{Containers: largeContainers, Priority: &highPriority, NodeName: "machine2"}}},
 			expected: map[string]map[string]bool{"machine1": {"b": true, "c": true}},
 		},
 		{
@@ -760,9 +773,9 @@ func TestSelectNodesForPreemption(t *testing.T) {
 							},
 						},
 					}}}},
-				{ObjectMeta: metav1.ObjectMeta{Name: "b"}, Spec: v1.PodSpec{Containers: smallContainers, Priority: &midPriority, NodeName: "machine1"}},
-				{ObjectMeta: metav1.ObjectMeta{Name: "d"}, Spec: v1.PodSpec{Containers: smallContainers, Priority: &highPriority, NodeName: "machine1"}},
-				{ObjectMeta: metav1.ObjectMeta{Name: "e"}, Spec: v1.PodSpec{Containers: largeContainers, Priority: &highPriority, NodeName: "machine2"}}},
+				{ObjectMeta: metav1.ObjectMeta{Name: "b", UID: types.UID("b")}, Spec: v1.PodSpec{Containers: smallContainers, Priority: &midPriority, NodeName: "machine1"}},
+				{ObjectMeta: metav1.ObjectMeta{Name: "d", UID: types.UID("d")}, Spec: v1.PodSpec{Containers: smallContainers, Priority: &highPriority, NodeName: "machine1"}},
+				{ObjectMeta: metav1.ObjectMeta{Name: "e", UID: types.UID("e")}, Spec: v1.PodSpec{Containers: largeContainers, Priority: &highPriority, NodeName: "machine2"}}},
 			expected:             map[string]map[string]bool{"machine1": {"a": true}, "machine2": {}},
 			addAffinityPredicate: true,
 		},
@@ -778,7 +791,7 @@ func TestSelectNodesForPreemption(t *testing.T) {
 			test.predicates[predicates.MatchInterPodAffinity] = algorithmpredicates.NewPodAffinityPredicate(FakeNodeInfo(*nodes[0]), schedulertesting.FakePodLister(test.pods))
 		}
 		nodeNameToInfo := schedulercache.CreateNodeNameToInfoMap(test.pods, nodes)
-		nodeToPods, err := selectNodesForPreemption(test.pod, nodeNameToInfo, nodes, test.predicates, PredicateMetadata)
+		nodeToPods, err := selectNodesForPreemption(test.pod, nodeNameToInfo, nodes, test.predicates, PredicateMetadata, nil, nil)
 		if err != nil {
 			t.Error(err)
 		}
@@ -802,47 +815,47 @@ func TestPickOneNodeForPreemption(t *testing.T) {
 			name:       "No node needs preemption",
 			predicates: map[string]algorithm.FitPredicate{"matches": algorithmpredicates.PodFitsResources},
 			nodes:      []string{"machine1"},
-			pod:        &v1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "machine1"}, Spec: v1.PodSpec{Containers: largeContainers, Priority: &highPriority}},
+			pod:        &v1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "machine1", UID: types.UID("machine1")}, Spec: v1.PodSpec{Containers: largeContainers, Priority: &highPriority}},
 			pods: []*v1.Pod{
-				{ObjectMeta: metav1.ObjectMeta{Name: "m1.1"}, Spec: v1.PodSpec{Containers: smallContainers, Priority: &midPriority, NodeName: "machine1"}}},
+				{ObjectMeta: metav1.ObjectMeta{Name: "m1.1", UID: types.UID("m1.1")}, Spec: v1.PodSpec{Containers: smallContainers, Priority: &midPriority, NodeName: "machine1"}}},
 			expected: []string{"machine1"},
 		},
 		{
 			name:       "a pod that fits on both machines when lower priority pods are preempted",
 			predicates: map[string]algorithm.FitPredicate{"matches": algorithmpredicates.PodFitsResources},
 			nodes:      []string{"machine1", "machine2"},
-			pod:        &v1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "machine1"}, Spec: v1.PodSpec{Containers: largeContainers, Priority: &highPriority}},
+			pod:        &v1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "machine1", UID: types.UID("machine1")}, Spec: v1.PodSpec{Containers: largeContainers, Priority: &highPriority}},
 			pods: []*v1.Pod{
-				{ObjectMeta: metav1.ObjectMeta{Name: "m1.1"}, Spec: v1.PodSpec{Containers: largeContainers, Priority: &midPriority, NodeName: "machine1"}},
+				{ObjectMeta: metav1.ObjectMeta{Name: "m1.1", UID: types.UID("m1.1")}, Spec: v1.PodSpec{Containers: largeContainers, Priority: &midPriority, NodeName: "machine1"}},
 
-				{ObjectMeta: metav1.ObjectMeta{Name: "m2.1"}, Spec: v1.PodSpec{Containers: largeContainers, Priority: &midPriority, NodeName: "machine2"}}},
+				{ObjectMeta: metav1.ObjectMeta{Name: "m2.1", UID: types.UID("m2.1")}, Spec: v1.PodSpec{Containers: largeContainers, Priority: &midPriority, NodeName: "machine2"}}},
 			expected: []string{"machine1", "machine2"},
 		},
 		{
 			name:       "a pod that fits on a machine with no preemption",
 			predicates: map[string]algorithm.FitPredicate{"matches": algorithmpredicates.PodFitsResources},
 			nodes:      []string{"machine1", "machine2", "machine3"},
-			pod:        &v1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "machine1"}, Spec: v1.PodSpec{Containers: largeContainers, Priority: &highPriority}},
+			pod:        &v1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "machine1", UID: types.UID("machine1")}, Spec: v1.PodSpec{Containers: largeContainers, Priority: &highPriority}},
 			pods: []*v1.Pod{
-				{ObjectMeta: metav1.ObjectMeta{Name: "m1.1"}, Spec: v1.PodSpec{Containers: largeContainers, Priority: &midPriority, NodeName: "machine1"}},
+				{ObjectMeta: metav1.ObjectMeta{Name: "m1.1", UID: types.UID("m1.1")}, Spec: v1.PodSpec{Containers: largeContainers, Priority: &midPriority, NodeName: "machine1"}},
 
-				{ObjectMeta: metav1.ObjectMeta{Name: "m2.1"}, Spec: v1.PodSpec{Containers: largeContainers, Priority: &midPriority, NodeName: "machine2"}}},
+				{ObjectMeta: metav1.ObjectMeta{Name: "m2.1", UID: types.UID("m2.1")}, Spec: v1.PodSpec{Containers: largeContainers, Priority: &midPriority, NodeName: "machine2"}}},
 			expected: []string{"machine3"},
 		},
 		{
 			name:       "machine with min highest priority pod is picked",
 			predicates: map[string]algorithm.FitPredicate{"matches": algorithmpredicates.PodFitsResources},
 			nodes:      []string{"machine1", "machine2", "machine3"},
-			pod:        &v1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "machine1"}, Spec: v1.PodSpec{Containers: veryLargeContainers, Priority: &highPriority}},
+			pod:        &v1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "machine1", UID: types.UID("machine1")}, Spec: v1.PodSpec{Containers: veryLargeContainers, Priority: &highPriority}},
 			pods: []*v1.Pod{
-				{ObjectMeta: metav1.ObjectMeta{Name: "m1.1"}, Spec: v1.PodSpec{Containers: mediumContainers, Priority: &midPriority, NodeName: "machine1"}},
-				{ObjectMeta: metav1.ObjectMeta{Name: "m1.2"}, Spec: v1.PodSpec{Containers: largeContainers, Priority: &midPriority, NodeName: "machine1"}},
+				{ObjectMeta: metav1.ObjectMeta{Name: "m1.1", UID: types.UID("m1.1")}, Spec: v1.PodSpec{Containers: mediumContainers, Priority: &midPriority, NodeName: "machine1"}},
+				{ObjectMeta: metav1.ObjectMeta{Name: "m1.2", UID: types.UID("m1.2")}, Spec: v1.PodSpec{Containers: largeContainers, Priority: &midPriority, NodeName: "machine1"}},
 
-				{ObjectMeta: metav1.ObjectMeta{Name: "m2.1"}, Spec: v1.PodSpec{Containers: mediumContainers, Priority: &midPriority, NodeName: "machine2"}},
-				{ObjectMeta: metav1.ObjectMeta{Name: "m2.2"}, Spec: v1.PodSpec{Containers: mediumContainers, Priority: &lowPriority, NodeName: "machine2"}},
+				{ObjectMeta: metav1.ObjectMeta{Name: "m2.1", UID: types.UID("m2.1")}, Spec: v1.PodSpec{Containers: mediumContainers, Priority: &midPriority, NodeName: "machine2"}},
+				{ObjectMeta: metav1.ObjectMeta{Name: "m2.2", UID: types.UID("m2.2")}, Spec: v1.PodSpec{Containers: mediumContainers, Priority: &lowPriority, NodeName: "machine2"}},
 
-				{ObjectMeta: metav1.ObjectMeta{Name: "m3.1"}, Spec: v1.PodSpec{Containers: mediumContainers, Priority: &lowPriority, NodeName: "machine3"}},
-				{ObjectMeta: metav1.ObjectMeta{Name: "m3.2"}, Spec: v1.PodSpec{Containers: mediumContainers, Priority: &lowPriority, NodeName: "machine3"}},
+				{ObjectMeta: metav1.ObjectMeta{Name: "m3.1", UID: types.UID("m3.1")}, Spec: v1.PodSpec{Containers: mediumContainers, Priority: &lowPriority, NodeName: "machine3"}},
+				{ObjectMeta: metav1.ObjectMeta{Name: "m3.2", UID: types.UID("m3.2")}, Spec: v1.PodSpec{Containers: mediumContainers, Priority: &lowPriority, NodeName: "machine3"}},
 			},
 			expected: []string{"machine3"},
 		},
@@ -850,16 +863,16 @@ func TestPickOneNodeForPreemption(t *testing.T) {
 			name:       "when highest priorities are the same, minimum sum of priorities is picked",
 			predicates: map[string]algorithm.FitPredicate{"matches": algorithmpredicates.PodFitsResources},
 			nodes:      []string{"machine1", "machine2", "machine3"},
-			pod:        &v1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "machine1"}, Spec: v1.PodSpec{Containers: veryLargeContainers, Priority: &highPriority}},
+			pod:        &v1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "machine1", UID: types.UID("machine1")}, Spec: v1.PodSpec{Containers: veryLargeContainers, Priority: &highPriority}},
 			pods: []*v1.Pod{
-				{ObjectMeta: metav1.ObjectMeta{Name: "m1.1"}, Spec: v1.PodSpec{Containers: mediumContainers, Priority: &midPriority, NodeName: "machine1"}},
-				{ObjectMeta: metav1.ObjectMeta{Name: "m1.2"}, Spec: v1.PodSpec{Containers: largeContainers, Priority: &midPriority, NodeName: "machine1"}},
+				{ObjectMeta: metav1.ObjectMeta{Name: "m1.1", UID: types.UID("m1.1")}, Spec: v1.PodSpec{Containers: mediumContainers, Priority: &midPriority, NodeName: "machine1"}},
+				{ObjectMeta: metav1.ObjectMeta{Name: "m1.2", UID: types.UID("m1.2")}, Spec: v1.PodSpec{Containers: largeContainers, Priority: &midPriority, NodeName: "machine1"}},
 
-				{ObjectMeta: metav1.ObjectMeta{Name: "m2.1"}, Spec: v1.PodSpec{Containers: largeContainers, Priority: &midPriority, NodeName: "machine2"}},
-				{ObjectMeta: metav1.ObjectMeta{Name: "m2.2"}, Spec: v1.PodSpec{Containers: mediumContainers, Priority: &lowPriority, NodeName: "machine2"}},
+				{ObjectMeta: metav1.ObjectMeta{Name: "m2.1", UID: types.UID("m2.1")}, Spec: v1.PodSpec{Containers: largeContainers, Priority: &midPriority, NodeName: "machine2"}},
+				{ObjectMeta: metav1.ObjectMeta{Name: "m2.2", UID: types.UID("m2.2")}, Spec: v1.PodSpec{Containers: mediumContainers, Priority: &lowPriority, NodeName: "machine2"}},
 
-				{ObjectMeta: metav1.ObjectMeta{Name: "m3.1"}, Spec: v1.PodSpec{Containers: mediumContainers, Priority: &midPriority, NodeName: "machine3"}},
-				{ObjectMeta: metav1.ObjectMeta{Name: "m3.2"}, Spec: v1.PodSpec{Containers: mediumContainers, Priority: &midPriority, NodeName: "machine3"}},
+				{ObjectMeta: metav1.ObjectMeta{Name: "m3.1", UID: types.UID("m3.1")}, Spec: v1.PodSpec{Containers: mediumContainers, Priority: &midPriority, NodeName: "machine3"}},
+				{ObjectMeta: metav1.ObjectMeta{Name: "m3.2", UID: types.UID("m3.2")}, Spec: v1.PodSpec{Containers: mediumContainers, Priority: &midPriority, NodeName: "machine3"}},
 			},
 			expected: []string{"machine2"},
 		},
@@ -867,19 +880,19 @@ func TestPickOneNodeForPreemption(t *testing.T) {
 			name:       "when highest priority and sum are the same, minimum number of pods is picked",
 			predicates: map[string]algorithm.FitPredicate{"matches": algorithmpredicates.PodFitsResources},
 			nodes:      []string{"machine1", "machine2", "machine3"},
-			pod:        &v1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "machine1"}, Spec: v1.PodSpec{Containers: veryLargeContainers, Priority: &highPriority}},
+			pod:        &v1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "machine1", UID: types.UID("machine1")}, Spec: v1.PodSpec{Containers: veryLargeContainers, Priority: &highPriority}},
 			pods: []*v1.Pod{
-				{ObjectMeta: metav1.ObjectMeta{Name: "m1.1"}, Spec: v1.PodSpec{Containers: smallContainers, Priority: &midPriority, NodeName: "machine1"}},
-				{ObjectMeta: metav1.ObjectMeta{Name: "m1.2"}, Spec: v1.PodSpec{Containers: smallContainers, Priority: &negPriority, NodeName: "machine1"}},
-				{ObjectMeta: metav1.ObjectMeta{Name: "m1.3"}, Spec: v1.PodSpec{Containers: smallContainers, Priority: &midPriority, NodeName: "machine1"}},
-				{ObjectMeta: metav1.ObjectMeta{Name: "m1.4"}, Spec: v1.PodSpec{Containers: smallContainers, Priority: &negPriority, NodeName: "machine1"}},
+				{ObjectMeta: metav1.ObjectMeta{Name: "m1.1", UID: types.UID("m1.1")}, Spec: v1.PodSpec{Containers: smallContainers, Priority: &midPriority, NodeName: "machine1"}},
+				{ObjectMeta: metav1.ObjectMeta{Name: "m1.2", UID: types.UID("m1.2")}, Spec: v1.PodSpec{Containers: smallContainers, Priority: &negPriority, NodeName: "machine1"}},
+				{ObjectMeta: metav1.ObjectMeta{Name: "m1.3", UID: types.UID("m1.3")}, Spec: v1.PodSpec{Containers: smallContainers, Priority: &midPriority, NodeName: "machine1"}},
+				{ObjectMeta: metav1.ObjectMeta{Name: "m1.4", UID: types.UID("m1.4")}, Spec: v1.PodSpec{Containers: smallContainers, Priority: &negPriority, NodeName: "machine1"}},
 
-				{ObjectMeta: metav1.ObjectMeta{Name: "m2.1"}, Spec: v1.PodSpec{Containers: largeContainers, Priority: &midPriority, NodeName: "machine2"}},
-				{ObjectMeta: metav1.ObjectMeta{Name: "m2.2"}, Spec: v1.PodSpec{Containers: mediumContainers, Priority: &negPriority, NodeName: "machine2"}},
+				{ObjectMeta: metav1.ObjectMeta{Name: "m2.1", UID: types.UID("m2.1")}, Spec: v1.PodSpec{Containers: largeContainers, Priority: &midPriority, NodeName: "machine2"}},
+				{ObjectMeta: metav1.ObjectMeta{Name: "m2.2", UID: types.UID("m2.2")}, Spec: v1.PodSpec{Containers: mediumContainers, Priority: &negPriority, NodeName: "machine2"}},
 
-				{ObjectMeta: metav1.ObjectMeta{Name: "m3.1"}, Spec: v1.PodSpec{Containers: mediumContainers, Priority: &midPriority, NodeName: "machine3"}},
-				{ObjectMeta: metav1.ObjectMeta{Name: "m3.2"}, Spec: v1.PodSpec{Containers: smallContainers, Priority: &negPriority, NodeName: "machine3"}},
-				{ObjectMeta: metav1.ObjectMeta{Name: "m3.3"}, Spec: v1.PodSpec{Containers: smallContainers, Priority: &lowPriority, NodeName: "machine3"}},
+				{ObjectMeta: metav1.ObjectMeta{Name: "m3.1", UID: types.UID("m3.1")}, Spec: v1.PodSpec{Containers: mediumContainers, Priority: &midPriority, NodeName: "machine3"}},
+				{ObjectMeta: metav1.ObjectMeta{Name: "m3.2", UID: types.UID("m3.2")}, Spec: v1.PodSpec{Containers: smallContainers, Priority: &negPriority, NodeName: "machine3"}},
+				{ObjectMeta: metav1.ObjectMeta{Name: "m3.3", UID: types.UID("m3.3")}, Spec: v1.PodSpec{Containers: smallContainers, Priority: &lowPriority, NodeName: "machine3"}},
 			},
 			expected: []string{"machine2"},
 		},
@@ -889,18 +902,18 @@ func TestPickOneNodeForPreemption(t *testing.T) {
 			name:       "sum of adjusted priorities is considered",
 			predicates: map[string]algorithm.FitPredicate{"matches": algorithmpredicates.PodFitsResources},
 			nodes:      []string{"machine1", "machine2", "machine3"},
-			pod:        &v1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "machine1"}, Spec: v1.PodSpec{Containers: veryLargeContainers, Priority: &highPriority}},
+			pod:        &v1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "machine1", UID: types.UID("machine1")}, Spec: v1.PodSpec{Containers: veryLargeContainers, Priority: &highPriority}},
 			pods: []*v1.Pod{
-				{ObjectMeta: metav1.ObjectMeta{Name: "m1.1"}, Spec: v1.PodSpec{Containers: smallContainers, Priority: &midPriority, NodeName: "machine1"}},
-				{ObjectMeta: metav1.ObjectMeta{Name: "m1.2"}, Spec: v1.PodSpec{Containers: smallContainers, Priority: &negPriority, NodeName: "machine1"}},
-				{ObjectMeta: metav1.ObjectMeta{Name: "m1.3"}, Spec: v1.PodSpec{Containers: smallContainers, Priority: &negPriority, NodeName: "machine1"}},
+				{ObjectMeta: metav1.ObjectMeta{Name: "m1.1", UID: types.UID("m1.1")}, Spec: v1.PodSpec{Containers: smallContainers, Priority: &midPriority, NodeName: "machine1"}},
+				{ObjectMeta: metav1.ObjectMeta{Name: "m1.2", UID: types.UID("m1.2")}, Spec: v1.PodSpec{Containers: smallContainers, Priority: &negPriority, NodeName: "machine1"}},
+				{ObjectMeta: metav1.ObjectMeta{Name: "m1.3", UID: types.UID("m1.3")}, Spec: v1.PodSpec{Containers: smallContainers, Priority: &negPriority, NodeName: "machine1"}},
 
-				{ObjectMeta: metav1.ObjectMeta{Name: "m2.1"}, Spec: v1.PodSpec{Containers: largeContainers, Priority: &midPriority, NodeName: "machine2"}},
-				{ObjectMeta: metav1.ObjectMeta{Name: "m2.2"}, Spec: v1.PodSpec{Containers: mediumContainers, Priority: &negPriority, NodeName: "machine2"}},
+				{ObjectMeta: metav1.ObjectMeta{Name: "m2.1", UID: types.UID("m2.1")}, Spec: v1.PodSpec{Containers: largeContainers, Priority: &midPriority, NodeName: "machine2"}},
+				{ObjectMeta: metav1.ObjectMeta{Name: "m2.2", UID: types.UID("m2.2")}, Spec: v1.PodSpec{Containers: mediumContainers, Priority: &negPriority, NodeName: "machine2"}},
 
-				{ObjectMeta: metav1.ObjectMeta{Name: "m3.1"}, Spec: v1.PodSpec{Containers: mediumContainers, Priority: &midPriority, NodeName: "machine3"}},
-				{ObjectMeta: metav1.ObjectMeta{Name: "m3.2"}, Spec: v1.PodSpec{Containers: smallContainers, Priority: &negPriority, NodeName: "machine3"}},
-				{ObjectMeta: metav1.ObjectMeta{Name: "m3.3"}, Spec: v1.PodSpec{Containers: smallContainers, Priority: &lowPriority, NodeName: "machine3"}},
+				{ObjectMeta: metav1.ObjectMeta{Name: "m3.1", UID: types.UID("m3.1")}, Spec: v1.PodSpec{Containers: mediumContainers, Priority: &midPriority, NodeName: "machine3"}},
+				{ObjectMeta: metav1.ObjectMeta{Name: "m3.2", UID: types.UID("m3.2")}, Spec: v1.PodSpec{Containers: smallContainers, Priority: &negPriority, NodeName: "machine3"}},
+				{ObjectMeta: metav1.ObjectMeta{Name: "m3.3", UID: types.UID("m3.3")}, Spec: v1.PodSpec{Containers: smallContainers, Priority: &lowPriority, NodeName: "machine3"}},
 			},
 			expected: []string{"machine2"},
 		},
@@ -908,23 +921,23 @@ func TestPickOneNodeForPreemption(t *testing.T) {
 			name:       "non-overlapping lowest high priority, sum priorities, and number of pods",
 			predicates: map[string]algorithm.FitPredicate{"matches": algorithmpredicates.PodFitsResources},
 			nodes:      []string{"machine1", "machine2", "machine3", "machine4"},
-			pod:        &v1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "pod1"}, Spec: v1.PodSpec{Containers: veryLargeContainers, Priority: &veryHighPriority}},
+			pod:        &v1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "pod1", UID: types.UID("pod1")}, Spec: v1.PodSpec{Containers: veryLargeContainers, Priority: &veryHighPriority}},
 			pods: []*v1.Pod{
-				{ObjectMeta: metav1.ObjectMeta{Name: "m1.1"}, Spec: v1.PodSpec{Containers: smallContainers, Priority: &midPriority, NodeName: "machine1"}},
-				{ObjectMeta: metav1.ObjectMeta{Name: "m1.2"}, Spec: v1.PodSpec{Containers: smallContainers, Priority: &lowPriority, NodeName: "machine1"}},
-				{ObjectMeta: metav1.ObjectMeta{Name: "m1.3"}, Spec: v1.PodSpec{Containers: smallContainers, Priority: &lowPriority, NodeName: "machine1"}},
+				{ObjectMeta: metav1.ObjectMeta{Name: "m1.1", UID: types.UID("m1.1")}, Spec: v1.PodSpec{Containers: smallContainers, Priority: &midPriority, NodeName: "machine1"}},
+				{ObjectMeta: metav1.ObjectMeta{Name: "m1.2", UID: types.UID("m1.2")}, Spec: v1.PodSpec{Containers: smallContainers, Priority: &lowPriority, NodeName: "machine1"}},
+				{ObjectMeta: metav1.ObjectMeta{Name: "m1.3", UID: types.UID("m1.3")}, Spec: v1.PodSpec{Containers: smallContainers, Priority: &lowPriority, NodeName: "machine1"}},
 
-				{ObjectMeta: metav1.ObjectMeta{Name: "m2.1"}, Spec: v1.PodSpec{Containers: largeContainers, Priority: &highPriority, NodeName: "machine2"}},
+				{ObjectMeta: metav1.ObjectMeta{Name: "m2.1", UID: types.UID("m2.1")}, Spec: v1.PodSpec{Containers: largeContainers, Priority: &highPriority, NodeName: "machine2"}},
 
-				{ObjectMeta: metav1.ObjectMeta{Name: "m3.1"}, Spec: v1.PodSpec{Containers: mediumContainers, Priority: &midPriority, NodeName: "machine3"}},
-				{ObjectMeta: metav1.ObjectMeta{Name: "m3.2"}, Spec: v1.PodSpec{Containers: smallContainers, Priority: &lowPriority, NodeName: "machine3"}},
-				{ObjectMeta: metav1.ObjectMeta{Name: "m3.3"}, Spec: v1.PodSpec{Containers: smallContainers, Priority: &lowPriority, NodeName: "machine3"}},
-				{ObjectMeta: metav1.ObjectMeta{Name: "m3.4"}, Spec: v1.PodSpec{Containers: mediumContainers, Priority: &lowPriority, NodeName: "machine3"}},
+				{ObjectMeta: metav1.ObjectMeta{Name: "m3.1", UID: types.UID("m3.1")}, Spec: v1.PodSpec{Containers: mediumContainers, Priority: &midPriority, NodeName: "machine3"}},
+				{ObjectMeta: metav1.ObjectMeta{Name: "m3.2", UID: types.UID("m3.2")}, Spec: v1.PodSpec{Containers: smallContainers, Priority: &lowPriority, NodeName: "machine3"}},
+				{ObjectMeta: metav1.ObjectMeta{Name: "m3.3", UID: types.UID("m3.3")}, Spec: v1.PodSpec{Containers: smallContainers, Priority: &lowPriority, NodeName: "machine3"}},
+				{ObjectMeta: metav1.ObjectMeta{Name: "m3.4", UID: types.UID("m3.4")}, Spec: v1.PodSpec{Containers: mediumContainers, Priority: &lowPriority, NodeName: "machine3"}},
 
-				{ObjectMeta: metav1.ObjectMeta{Name: "m4.1"}, Spec: v1.PodSpec{Containers: mediumContainers, Priority: &midPriority, NodeName: "machine4"}},
-				{ObjectMeta: metav1.ObjectMeta{Name: "m4.2"}, Spec: v1.PodSpec{Containers: smallContainers, Priority: &midPriority, NodeName: "machine4"}},
-				{ObjectMeta: metav1.ObjectMeta{Name: "m4.3"}, Spec: v1.PodSpec{Containers: smallContainers, Priority: &midPriority, NodeName: "machine4"}},
-				{ObjectMeta: metav1.ObjectMeta{Name: "m4.4"}, Spec: v1.PodSpec{Containers: smallContainers, Priority: &negPriority, NodeName: "machine4"}},
+				{ObjectMeta: metav1.ObjectMeta{Name: "m4.1", UID: types.UID("m4.1")}, Spec: v1.PodSpec{Containers: mediumContainers, Priority: &midPriority, NodeName: "machine4"}},
+				{ObjectMeta: metav1.ObjectMeta{Name: "m4.2", UID: types.UID("m4.2")}, Spec: v1.PodSpec{Containers: smallContainers, Priority: &midPriority, NodeName: "machine4"}},
+				{ObjectMeta: metav1.ObjectMeta{Name: "m4.3", UID: types.UID("m4.3")}, Spec: v1.PodSpec{Containers: smallContainers, Priority: &midPriority, NodeName: "machine4"}},
+				{ObjectMeta: metav1.ObjectMeta{Name: "m4.4", UID: types.UID("m4.4")}, Spec: v1.PodSpec{Containers: smallContainers, Priority: &negPriority, NodeName: "machine4"}},
 			},
 			expected: []string{"machine1"},
 		},
@@ -935,7 +948,7 @@ func TestPickOneNodeForPreemption(t *testing.T) {
 			nodes = append(nodes, makeNode(n, priorityutil.DefaultMilliCpuRequest*5, priorityutil.DefaultMemoryRequest*5))
 		}
 		nodeNameToInfo := schedulercache.CreateNodeNameToInfoMap(test.pods, nodes)
-		candidateNodes, _ := selectNodesForPreemption(test.pod, nodeNameToInfo, nodes, test.predicates, PredicateMetadata)
+		candidateNodes, _ := selectNodesForPreemption(test.pod, nodeNameToInfo, nodes, test.predicates, PredicateMetadata, nil, nil)
 		node := pickOneNodeForPreemption(candidateNodes)
 		found := false
 		for _, nodeName := range test.expected {
@@ -971,7 +984,7 @@ func TestNodesWherePreemptionMightHelp(t *testing.T) {
 				"machine3": []algorithm.PredicateFailureReason{predicates.ErrTaintsTolerationsNotMatch},
 				"machine4": []algorithm.PredicateFailureReason{predicates.ErrNodeLabelPresenceViolated},
 			},
-			pod:      &v1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "pod1"}},
+			pod:      &v1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "pod1", UID: types.UID("pod1")}},
 			expected: map[string]bool{},
 		},
 		{
@@ -981,7 +994,7 @@ func TestNodesWherePreemptionMightHelp(t *testing.T) {
 				"machine2": []algorithm.PredicateFailureReason{predicates.ErrPodNotMatchHostName},
 				"machine3": []algorithm.PredicateFailureReason{predicates.ErrNodeUnschedulable},
 			},
-			pod: &v1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "pod1"}, Spec: v1.PodSpec{Affinity: &v1.Affinity{
+			pod: &v1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "pod1", UID: types.UID("pod1")}, Spec: v1.PodSpec{Affinity: &v1.Affinity{
 				PodAffinity: &v1.PodAffinity{
 					RequiredDuringSchedulingIgnoredDuringExecution: []v1.PodAffinityTerm{
 						{
@@ -1006,7 +1019,7 @@ func TestNodesWherePreemptionMightHelp(t *testing.T) {
 				"machine1": []algorithm.PredicateFailureReason{predicates.ErrPodAffinityNotMatch},
 				"machine2": []algorithm.PredicateFailureReason{predicates.ErrPodNotMatchHostName},
 			},
-			pod: &v1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "pod1"}, Spec: v1.PodSpec{Affinity: &v1.Affinity{
+			pod: &v1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "pod1", UID: types.UID("pod1")}, Spec: v1.PodSpec{Affinity: &v1.Affinity{
 				PodAffinity: &v1.PodAffinity{
 					RequiredDuringSchedulingIgnoredDuringExecution: []v1.PodAffinityTerm{
 						{
@@ -1050,7 +1063,7 @@ func TestNodesWherePreemptionMightHelp(t *testing.T) {
 				"machine3": []algorithm.PredicateFailureReason{predicates.NewInsufficientResourceError(v1.ResourceMemory, 1000, 600, 400)},
 				"machine4": []algorithm.PredicateFailureReason{},
 			},
-			pod:      &v1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "pod1"}},
+			pod:      &v1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "pod1", UID: types.UID("pod1")}},
 			expected: map[string]bool{"machine3": true, "machine4": true},
 		},
 	}
@@ -1089,47 +1102,45 @@ func TestPreempt(t *testing.T) {
 	}{
 		{
 			name: "basic preemption logic",
-			pod: &v1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "pod1"}, Spec: v1.PodSpec{
+			pod: &v1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "pod1", UID: types.UID("pod1")}, Spec: v1.PodSpec{
 				Containers: veryLargeContainers,
 				Priority:   &highPriority},
 			},
 			pods: []*v1.Pod{
-				{ObjectMeta: metav1.ObjectMeta{Name: "m1.1"}, Spec: v1.PodSpec{Containers: smallContainers, Priority: &lowPriority, NodeName: "machine1"}, Status: v1.PodStatus{Phase: v1.PodRunning}},
-				{ObjectMeta: metav1.ObjectMeta{Name: "m1.2"}, Spec: v1.PodSpec{Containers: smallContainers, Priority: &lowPriority, NodeName: "machine1"}, Status: v1.PodStatus{Phase: v1.PodRunning}},
-
-				{ObjectMeta: metav1.ObjectMeta{Name: "m2.1"}, Spec: v1.PodSpec{Containers: largeContainers, Priority: &highPriority, NodeName: "machine2"}, Status: v1.PodStatus{Phase: v1.PodRunning}},
-
-				{ObjectMeta: metav1.ObjectMeta{Name: "m3.1"}, Spec: v1.PodSpec{Containers: mediumContainers, Priority: &midPriority, NodeName: "machine3"}, Status: v1.PodStatus{Phase: v1.PodRunning}},
+				{ObjectMeta: metav1.ObjectMeta{Name: "m1.1", UID: types.UID("m1.1")}, Spec: v1.PodSpec{Containers: smallContainers, Priority: &lowPriority, NodeName: "machine1"}, Status: v1.PodStatus{Phase: v1.PodRunning}},
+				{ObjectMeta: metav1.ObjectMeta{Name: "m1.2", UID: types.UID("m1.2")}, Spec: v1.PodSpec{Containers: smallContainers, Priority: &lowPriority, NodeName: "machine1"}, Status: v1.PodStatus{Phase: v1.PodRunning}},
+				{ObjectMeta: metav1.ObjectMeta{Name: "m2.1", UID: types.UID("m2.1")}, Spec: v1.PodSpec{Containers: largeContainers, Priority: &highPriority, NodeName: "machine2"}, Status: v1.PodStatus{Phase: v1.PodRunning}},
+				{ObjectMeta: metav1.ObjectMeta{Name: "m3.1", UID: types.UID("m3.1")}, Spec: v1.PodSpec{Containers: mediumContainers, Priority: &midPriority, NodeName: "machine3"}, Status: v1.PodStatus{Phase: v1.PodRunning}},
 			},
 			expectedNode: "machine1",
 			expectedPods: []string{"m1.1", "m1.2"},
 		},
 		{
 			name: "One node doesn't need any preemption",
-			pod: &v1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "pod1"}, Spec: v1.PodSpec{
+			pod: &v1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "pod1", UID: types.UID("pod1")}, Spec: v1.PodSpec{
 				Containers: veryLargeContainers,
 				Priority:   &highPriority},
 			},
 			pods: []*v1.Pod{
-				{ObjectMeta: metav1.ObjectMeta{Name: "m1.1"}, Spec: v1.PodSpec{Containers: smallContainers, Priority: &lowPriority, NodeName: "machine1"}, Status: v1.PodStatus{Phase: v1.PodRunning}},
-				{ObjectMeta: metav1.ObjectMeta{Name: "m1.2"}, Spec: v1.PodSpec{Containers: smallContainers, Priority: &lowPriority, NodeName: "machine1"}, Status: v1.PodStatus{Phase: v1.PodRunning}},
+				{ObjectMeta: metav1.ObjectMeta{Name: "m1.1", UID: types.UID("m1.1")}, Spec: v1.PodSpec{Containers: smallContainers, Priority: &lowPriority, NodeName: "machine1"}, Status: v1.PodStatus{Phase: v1.PodRunning}},
+				{ObjectMeta: metav1.ObjectMeta{Name: "m1.2", UID: types.UID("m1.2")}, Spec: v1.PodSpec{Containers: smallContainers, Priority: &lowPriority, NodeName: "machine1"}, Status: v1.PodStatus{Phase: v1.PodRunning}},
 
-				{ObjectMeta: metav1.ObjectMeta{Name: "m2.1"}, Spec: v1.PodSpec{Containers: largeContainers, Priority: &highPriority, NodeName: "machine2"}, Status: v1.PodStatus{Phase: v1.PodRunning}},
+				{ObjectMeta: metav1.ObjectMeta{Name: "m2.1", UID: types.UID("m2.1")}, Spec: v1.PodSpec{Containers: largeContainers, Priority: &highPriority, NodeName: "machine2"}, Status: v1.PodStatus{Phase: v1.PodRunning}},
 			},
 			expectedNode: "machine3",
 			expectedPods: []string{},
 		},
 		{
 			name: "Scheduler extenders allow only machine1, otherwise machine3 would have been chosen",
-			pod: &v1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "pod1"}, Spec: v1.PodSpec{
+			pod: &v1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "pod1", UID: types.UID("pod1")}, Spec: v1.PodSpec{
 				Containers: veryLargeContainers,
 				Priority:   &highPriority},
 			},
 			pods: []*v1.Pod{
-				{ObjectMeta: metav1.ObjectMeta{Name: "m1.1"}, Spec: v1.PodSpec{Containers: smallContainers, Priority: &midPriority, NodeName: "machine1"}, Status: v1.PodStatus{Phase: v1.PodRunning}},
-				{ObjectMeta: metav1.ObjectMeta{Name: "m1.2"}, Spec: v1.PodSpec{Containers: smallContainers, Priority: &lowPriority, NodeName: "machine1"}, Status: v1.PodStatus{Phase: v1.PodRunning}},
+				{ObjectMeta: metav1.ObjectMeta{Name: "m1.1", UID: types.UID("m1.1")}, Spec: v1.PodSpec{Containers: smallContainers, Priority: &midPriority, NodeName: "machine1"}, Status: v1.PodStatus{Phase: v1.PodRunning}},
+				{ObjectMeta: metav1.ObjectMeta{Name: "m1.2", UID: types.UID("m1.2")}, Spec: v1.PodSpec{Containers: smallContainers, Priority: &lowPriority, NodeName: "machine1"}, Status: v1.PodStatus{Phase: v1.PodRunning}},
 
-				{ObjectMeta: metav1.ObjectMeta{Name: "m2.1"}, Spec: v1.PodSpec{Containers: largeContainers, Priority: &midPriority, NodeName: "machine2"}, Status: v1.PodStatus{Phase: v1.PodRunning}},
+				{ObjectMeta: metav1.ObjectMeta{Name: "m2.1", UID: types.UID("m2.1")}, Spec: v1.PodSpec{Containers: largeContainers, Priority: &midPriority, NodeName: "machine2"}, Status: v1.PodStatus{Phase: v1.PodRunning}},
 			},
 			extenders: []*FakeExtender{
 				{
@@ -1144,15 +1155,15 @@ func TestPreempt(t *testing.T) {
 		},
 		{
 			name: "Scheduler extenders do not allow any preemption",
-			pod: &v1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "pod1"}, Spec: v1.PodSpec{
+			pod: &v1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "pod1", UID: types.UID("pod1")}, Spec: v1.PodSpec{
 				Containers: veryLargeContainers,
 				Priority:   &highPriority},
 			},
 			pods: []*v1.Pod{
-				{ObjectMeta: metav1.ObjectMeta{Name: "m1.1"}, Spec: v1.PodSpec{Containers: smallContainers, Priority: &midPriority, NodeName: "machine1"}, Status: v1.PodStatus{Phase: v1.PodRunning}},
-				{ObjectMeta: metav1.ObjectMeta{Name: "m1.2"}, Spec: v1.PodSpec{Containers: smallContainers, Priority: &lowPriority, NodeName: "machine1"}, Status: v1.PodStatus{Phase: v1.PodRunning}},
+				{ObjectMeta: metav1.ObjectMeta{Name: "m1.1", UID: types.UID("m1.1")}, Spec: v1.PodSpec{Containers: smallContainers, Priority: &midPriority, NodeName: "machine1"}, Status: v1.PodStatus{Phase: v1.PodRunning}},
+				{ObjectMeta: metav1.ObjectMeta{Name: "m1.2", UID: types.UID("m1.2")}, Spec: v1.PodSpec{Containers: smallContainers, Priority: &lowPriority, NodeName: "machine1"}, Status: v1.PodStatus{Phase: v1.PodRunning}},
 
-				{ObjectMeta: metav1.ObjectMeta{Name: "m2.1"}, Spec: v1.PodSpec{Containers: largeContainers, Priority: &midPriority, NodeName: "machine2"}, Status: v1.PodStatus{Phase: v1.PodRunning}},
+				{ObjectMeta: metav1.ObjectMeta{Name: "m2.1", UID: types.UID("m2.1")}, Spec: v1.PodSpec{Containers: largeContainers, Priority: &midPriority, NodeName: "machine2"}, Status: v1.PodStatus{Phase: v1.PodRunning}},
 			},
 			extenders: []*FakeExtender{
 				{
@@ -1178,9 +1189,9 @@ func TestPreempt(t *testing.T) {
 			extenders = append(extenders, extender)
 		}
 		scheduler := NewGenericScheduler(
-			cache, nil, map[string]algorithm.FitPredicate{"matches": algorithmpredicates.PodFitsResources}, algorithm.EmptyPredicateMetadataProducer, []algorithm.PriorityConfig{{Function: numericPriority, Weight: 1}}, algorithm.EmptyMetadataProducer, extenders)
+			cache, nil, NewSchedulingQueue(), map[string]algorithm.FitPredicate{"matches": algorithmpredicates.PodFitsResources}, algorithm.EmptyPredicateMetadataProducer, []algorithm.PriorityConfig{{Function: numericPriority, Weight: 1}}, algorithm.EmptyMetadataProducer, extenders, nil)
 		// Call Preempt and check the expected results.
-		node, victims, err := scheduler.Preempt(test.pod, schedulertesting.FakeNodeLister(makeNodeList(nodeNames)), error(&FitError{test.pod, failedPredMap}))
+		node, victims, _, err := scheduler.Preempt(test.pod, schedulertesting.FakeNodeLister(makeNodeList(nodeNames)), error(&FitError{Pod: test.pod, FailedPredicates: failedPredMap}))
 		if err != nil {
 			t.Errorf("test [%v]: unexpected error in preemption: %v", test.name, err)
 		}
@@ -1208,7 +1219,7 @@ func TestPreempt(t *testing.T) {
 			test.pod.Annotations[NominatedNodeAnnotationKey] = node.Name
 		}
 		// Call preempt again and make sure it doesn't preempt any more pods.
-		node, victims, err = scheduler.Preempt(test.pod, schedulertesting.FakeNodeLister(makeNodeList(nodeNames)), error(&FitError{test.pod, failedPredMap}))
+		node, victims, _, err = scheduler.Preempt(test.pod, schedulertesting.FakeNodeLister(makeNodeList(nodeNames)), error(&FitError{Pod: test.pod, FailedPredicates: failedPredMap}))
 		if err != nil {
 			t.Errorf("test [%v]: unexpected error in preemption: %v", test.name, err)
 		}

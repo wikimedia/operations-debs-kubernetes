@@ -81,9 +81,6 @@ type crioContainerHandler struct {
 	ipAddress string
 
 	ignoreMetrics container.MetricSet
-
-	// container restart count
-	restartCount int
 }
 
 var _ container.ContainerHandler = &crioContainerHandler{}
@@ -175,7 +172,10 @@ func newCrioContainerHandler(
 	// ignore err and get zero as default, this happens with sandboxes, not sure why...
 	// kube isn't sending restart count in labels for sandboxes.
 	restartCount, _ := strconv.Atoi(cInfo.Annotations["io.kubernetes.container.restartCount"])
-	handler.restartCount = restartCount
+	// Only adds restartcount label if it's greater than 0
+	if restartCount > 0 {
+		handler.labels["restartcount"] = strconv.Itoa(restartCount)
+	}
 
 	handler.ipAddress = cInfo.IP
 
@@ -185,7 +185,7 @@ func newCrioContainerHandler(
 	}
 	// TODO for env vars we wanted to show from container.Config.Env from whitelist
 	//for _, exposedEnv := range metadataEnvs {
-	//glog.Infof("TODO env whitelist: %v", exposedEnv)
+	//glog.V(4).Infof("TODO env whitelist: %v", exposedEnv)
 	//}
 
 	return handler, nil
@@ -225,10 +225,6 @@ func (self *crioContainerHandler) GetSpec() (info.ContainerSpec, error) {
 	spec, err := common.GetSpec(self.cgroupPaths, self.machineInfoFactory, self.needNet(), hasFilesystem)
 
 	spec.Labels = self.labels
-	// Only adds restartcount label if it's greater than 0
-	if self.restartCount > 0 {
-		spec.Labels["restartcount"] = strconv.Itoa(self.restartCount)
-	}
 	spec.Envs = self.envs
 	spec.Image = self.image
 

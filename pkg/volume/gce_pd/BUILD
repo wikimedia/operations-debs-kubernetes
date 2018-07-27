@@ -14,6 +14,7 @@ go_library(
         "gce_pd.go",
         "gce_util.go",
     ],
+    importpath = "k8s.io/kubernetes/pkg/volume/gce_pd",
     deps = [
         "//pkg/cloudprovider:go_default_library",
         "//pkg/cloudprovider/providers/gce:go_default_library",
@@ -39,6 +40,7 @@ go_test(
         "attacher_test.go",
         "gce_pd_test.go",
     ],
+    importpath = "k8s.io/kubernetes/pkg/volume/gce_pd",
     library = ":go_default_library",
     deps = [
         "//pkg/kubelet/apis:go_default_library",
@@ -47,6 +49,7 @@ go_test(
         "//pkg/volume/testing:go_default_library",
         "//vendor/github.com/golang/glog:go_default_library",
         "//vendor/k8s.io/api/core/v1:go_default_library",
+        "//vendor/k8s.io/apimachinery/pkg/api/resource:go_default_library",
         "//vendor/k8s.io/apimachinery/pkg/apis/meta/v1:go_default_library",
         "//vendor/k8s.io/apimachinery/pkg/types:go_default_library",
         "//vendor/k8s.io/apimachinery/pkg/util/sets:go_default_library",

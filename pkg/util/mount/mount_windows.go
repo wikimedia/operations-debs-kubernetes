@@ -76,8 +76,21 @@ func (mounter *Mounter) Mount(source string, target string, fstype string, optio
 			return nil
 		}
 
-		// empty implementation for mounting azure file
-		return os.MkdirAll(target, 0755)
+		// currently only cifs mount is supported
+		if strings.ToLower(fstype) != "cifs" {
+			return fmt.Errorf("azureMount: only cifs mount is supported now, fstype: %q, mounting source (%q), target (%q), with options (%q)", fstype, source, target, options)
+		}
+
+		cmdLine := fmt.Sprintf(`$User = "%s";$PWord = ConvertTo-SecureString -String "%s" -AsPlainText -Force;`+
+			`$Credential = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList $User, $PWord`,
+			options[0], options[1])
+
+		bindSource = source
+		cmdLine += fmt.Sprintf(";New-SmbGlobalMapping -RemotePath %s -Credential $Credential", source)
+
+		if output, err := exec.Command("powershell", "/c", cmdLine).CombinedOutput(); err != nil {
+			return fmt.Errorf("azureMount: SmbGlobalMapping failed: %v, only SMB mount is supported now, output: %q", err, string(output))
+		}
 	}
 
 	if output, err := exec.Command("cmd", "/c", "mklink", "/D", target, bindSource).CombinedOutput(); err != nil {
@@ -132,7 +145,11 @@ func (mounter *Mounter) IsLikelyNotMountPoint(file string) (bool, error) {
 	}
 	// If current file is a symlink, then it is a mountpoint.
 	if stat.Mode()&os.ModeSymlink != 0 {
-		return false, nil
+		target, err := os.Readlink(file)
+		if err != nil {
+			return true, fmt.Errorf("Readlink error: %v", err)
+		}
+		return !mounter.ExistsPath(target), nil
 	}
 
 	return true, nil
@@ -184,6 +201,43 @@ func (mounter *Mounter) PathIsDevice(pathname string) (bool, error) {
 // propagation. Empty implementation here.
 func (mounter *Mounter) MakeRShared(path string) error {
 	return nil
+}
+
+// GetFileType checks for sockets/block/character devices
+func (mounter *Mounter) GetFileType(pathname string) (FileType, error) {
+	return getFileType(pathname)
+}
+
+// MakeFile creates a new directory
+func (mounter *Mounter) MakeDir(pathname string) error {
+	err := os.MkdirAll(pathname, os.FileMode(0755))
+	if err != nil {
+		if !os.IsExist(err) {
+			return err
+		}
+	}
+	return nil
+}
+
+// MakeFile creates an empty file
+func (mounter *Mounter) MakeFile(pathname string) error {
+	f, err := os.OpenFile(pathname, os.O_CREATE, os.FileMode(0644))
+	defer f.Close()
+	if err != nil {
+		if !os.IsExist(err) {
+			return err
+		}
+	}
+	return nil
+}
+
+// ExistsPath checks whether the path exists
+func (mounter *Mounter) ExistsPath(pathname string) bool {
+	_, err := os.Stat(pathname)
+	if err != nil {
+		return false
+	}
+	return true
 }
 
 // check whether hostPath is within volume path

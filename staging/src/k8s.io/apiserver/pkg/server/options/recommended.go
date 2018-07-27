@@ -37,7 +37,7 @@ type RecommendedOptions struct {
 	CoreAPI        *CoreAPIOptions
 }
 
-func NewRecommendedOptions(prefix string, copier runtime.ObjectCopier, codec runtime.Codec) *RecommendedOptions {
+func NewRecommendedOptions(prefix string, codec runtime.Codec) *RecommendedOptions {
 	sso := NewSecureServingOptions()
 
 	// We are composing recommended options for an aggregated api-server,
@@ -47,7 +47,7 @@ func NewRecommendedOptions(prefix string, copier runtime.ObjectCopier, codec run
 	sso.HTTP2MaxStreamsPerConnection = 1000
 
 	return &RecommendedOptions{
-		Etcd:           NewEtcdOptions(storagebackend.NewDefaultConfig(prefix, copier, codec)),
+		Etcd:           NewEtcdOptions(storagebackend.NewDefaultConfig(prefix, codec)),
 		SecureServing:  sso,
 		Authentication: NewDelegatingAuthenticationOptions(),
 		Authorization:  NewDelegatingAuthorizationOptions(),

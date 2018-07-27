@@ -145,11 +145,9 @@ func TestNodeSyncUpdate(t *testing.T) {
 			events: []fakeEvent{{"node1", "CloudCIDRAllocatorMismatch"}},
 		},
 		{
-			desc:      "update alias from node",
-			mode:      SyncFromCloud,
-			node:      nodeWithCIDRRange,
-			events:    []fakeEvent{{"node1", "CloudCIDRAllocatorInvalidMode"}},
-			wantError: true,
+			desc: "update alias from node",
+			mode: SyncFromCloud,
+			node: nodeWithCIDRRange,
 		},
 		{
 			desc: "update alias from node",
@@ -165,12 +163,10 @@ func TestNodeSyncUpdate(t *testing.T) {
 			// XXX/bowei -- validation
 		},
 		{
-			desc:      "update node from alias",
-			mode:      SyncFromCluster,
-			node:      nodeWithoutCIDRRange,
-			fake:      fakeAPIs{aliasRange: test.MustParseCIDR("10.1.2.3/16")},
-			events:    []fakeEvent{{"node1", "CloudCIDRAllocatorInvalidMode"}},
-			wantError: true,
+			desc: "update node from alias",
+			mode: SyncFromCluster,
+			node: nodeWithoutCIDRRange,
+			fake: fakeAPIs{aliasRange: test.MustParseCIDR("10.1.2.3/16")},
 		},
 		{
 			desc:      "allocate range",
@@ -194,7 +190,8 @@ func TestNodeSyncUpdate(t *testing.T) {
 			wantError: false,
 		},
 	} {
-		sync := New(&tc.fake, &tc.fake, &tc.fake, tc.mode, "node1", cidrset.NewCIDRSet(clusterCIDRRange, 24))
+		cidr, _ := cidrset.NewCIDRSet(clusterCIDRRange, 24)
+		sync := New(&tc.fake, &tc.fake, &tc.fake, tc.mode, "node1", cidr)
 		doneChan := make(chan struct{})
 
 		// Do a single step of the loop.
@@ -225,7 +222,8 @@ func TestNodeSyncResync(t *testing.T) {
 		resyncTimeout: time.Millisecond,
 		reportChan:    make(chan struct{}),
 	}
-	sync := New(fake, fake, fake, SyncFromCluster, "node1", cidrset.NewCIDRSet(clusterCIDRRange, 24))
+	cidr, _ := cidrset.NewCIDRSet(clusterCIDRRange, 24)
+	sync := New(fake, fake, fake, SyncFromCluster, "node1", cidr)
 	doneChan := make(chan struct{})
 
 	go sync.Loop(doneChan)
@@ -267,7 +265,8 @@ func TestNodeSyncDelete(t *testing.T) {
 			},
 		},
 	} {
-		sync := New(&tc.fake, &tc.fake, &tc.fake, tc.mode, "node1", cidrset.NewCIDRSet(clusterCIDRRange, 24))
+		cidr, _ := cidrset.NewCIDRSet(clusterCIDRRange, 24)
+		sync := New(&tc.fake, &tc.fake, &tc.fake, tc.mode, "node1", cidr)
 		doneChan := make(chan struct{})
 
 		// Do a single step of the loop.

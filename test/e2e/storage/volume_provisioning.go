@@ -41,11 +41,10 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/apiserver/pkg/authentication/serviceaccount"
 	clientset "k8s.io/client-go/kubernetes"
-	v1helper "k8s.io/kubernetes/pkg/api/v1/helper"
+	v1helper "k8s.io/kubernetes/pkg/apis/core/v1/helper"
 	storageutil "k8s.io/kubernetes/pkg/apis/storage/v1/util"
 	kubeletapis "k8s.io/kubernetes/pkg/kubelet/apis"
 	"k8s.io/kubernetes/test/e2e/framework"
-	imageutils "k8s.io/kubernetes/test/utils/image"
 )
 
 type storageClassTest struct {
@@ -101,11 +100,11 @@ func testDynamicProvisioning(t storageClassTest, client clientset.Interface, cla
 	// Check sizes
 	expectedCapacity := resource.MustParse(t.expectedSize)
 	pvCapacity := pv.Spec.Capacity[v1.ResourceName(v1.ResourceStorage)]
-	Expect(pvCapacity.Value()).To(Equal(expectedCapacity.Value()), "pvCapacity is not equal to expectedCapacity")
+	Expect(pvCapacity.Value()).To(BeNumerically(">=", expectedCapacity.Value()), "pvCapacity is not greater than or equal to expectedCapacity")
 
 	requestedCapacity := resource.MustParse(t.claimSize)
 	claimCapacity := claim.Spec.Resources.Requests[v1.ResourceName(v1.ResourceStorage)]
-	Expect(claimCapacity.Value()).To(Equal(requestedCapacity.Value()), "claimCapacity is not equal to requestedCapacity")
+	Expect(claimCapacity.Value()).To(BeNumerically(">=", requestedCapacity.Value()), "claimCapacity is not greater than or equal to requestedCapacity")
 
 	// Check PV properties
 	By("checking the PV")
@@ -257,8 +256,8 @@ var _ = SIGDescribe("Dynamic Provisioning", func() {
 						"type": "pd-ssd",
 						"zone": cloudZone,
 					},
-					"1.5Gi",
-					"2Gi",
+					"1.5G",
+					"2G",
 					func(volume *v1.PersistentVolume) error {
 						return checkGCEPD(volume, "pd-ssd")
 					},
@@ -270,8 +269,8 @@ var _ = SIGDescribe("Dynamic Provisioning", func() {
 					map[string]string{
 						"type": "pd-standard",
 					},
-					"1.5Gi",
-					"2Gi",
+					"1.5G",
+					"2G",
 					func(volume *v1.PersistentVolume) error {
 						return checkGCEPD(volume, "pd-standard")
 					},
@@ -436,8 +435,8 @@ var _ = SIGDescribe("Dynamic Provisioning", func() {
 				map[string]string{
 					"type": "pd-standard",
 				},
-				"1Gi",
-				"1Gi",
+				"1G",
+				"1G",
 				func(volume *v1.PersistentVolume) error {
 					return checkGCEPD(volume, "pd-standard")
 				},
@@ -470,8 +469,8 @@ var _ = SIGDescribe("Dynamic Provisioning", func() {
 				map[string]string{
 					"type": "pd-standard",
 				},
-				"1Gi",
-				"1Gi",
+				"1G",
+				"1G",
 				func(volume *v1.PersistentVolume) error {
 					return checkGCEPD(volume, "pd-standard")
 				},
@@ -521,7 +520,7 @@ var _ = SIGDescribe("Dynamic Provisioning", func() {
 				name:        "unmanaged_zone",
 				provisioner: "kubernetes.io/gce-pd",
 				parameters:  map[string]string{"zone": unmanagedZone},
-				claimSize:   "1Gi",
+				claimSize:   "1G",
 			}
 			sc := newStorageClass(test, ns, suffix)
 			sc, err = c.StorageV1().StorageClasses().Create(sc)
@@ -796,7 +795,7 @@ func runInPodWithVolume(c clientset.Interface, ns, claimName, command string) {
 			Containers: []v1.Container{
 				{
 					Name:    "volume-tester",
-					Image:   imageutils.GetBusyBoxImage(),
+					Image:   "busybox",
 					Command: []string{"/bin/sh"},
 					Args:    []string{"-c", command},
 					VolumeMounts: []v1.VolumeMount{

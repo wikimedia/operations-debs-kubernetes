@@ -62,13 +62,12 @@ var IdentityTransformer ValueTransformer = identityTransformer{}
 
 // Creates a new storage interface from the client
 // TODO: deprecate in favor of storage.Config abstraction over time
-func NewEtcdStorage(client etcd.Client, codec runtime.Codec, prefix string, quorum bool, cacheSize int, copier runtime.ObjectCopier, transformer ValueTransformer) storage.Interface {
+func NewEtcdStorage(client etcd.Client, codec runtime.Codec, prefix string, quorum bool, cacheSize int, transformer ValueTransformer) storage.Interface {
 	return &etcdHelper{
 		etcdMembersAPI: etcd.NewMembersAPI(client),
 		etcdKeysAPI:    etcd.NewKeysAPI(client),
 		codec:          codec,
 		versioner:      APIObjectVersioner{},
-		copier:         copier,
 		transformer:    transformer,
 		pathPrefix:     path.Join("/", prefix),
 		quorum:         quorum,
@@ -81,7 +80,6 @@ type etcdHelper struct {
 	etcdMembersAPI etcd.MembersAPI
 	etcdKeysAPI    etcd.KeysAPI
 	codec          runtime.Codec
-	copier         runtime.ObjectCopier
 	transformer    ValueTransformer
 	// Note that versioner is required for etcdHelper to work correctly.
 	// The public constructors (NewStorage & NewEtcdStorage) are setting it
@@ -353,7 +351,10 @@ func (h *etcdHelper) GetToList(ctx context.Context, key string, resourceVersion 
 	metrics.RecordEtcdRequestLatency("get", getTypeName(listPtr), startTime)
 	if err != nil {
 		if etcdutil.IsEtcdNotFound(err) {
-			return nil
+			if etcdErr, ok := err.(etcd.Error); ok {
+				return h.versioner.UpdateList(listObj, etcdErr.Index, "")
+			}
+			return fmt.Errorf("unexpected error from storage: %#v", err)
 		}
 		return toStorageErr(err, key, 0)
 	}

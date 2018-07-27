@@ -54,8 +54,6 @@ type CacherConfig struct {
 	// An underlying storage.Versioner.
 	Versioner Versioner
 
-	Copier runtime.ObjectCopier
-
 	// The Cache will be caching objects of a given Type and assumes that they
 	// are all stored under ResourcePrefix directory in the underlying database.
 	Type           interface{}
@@ -161,8 +159,6 @@ type Cacher struct {
 	// Underlying storage.Interface.
 	storage Interface
 
-	copier runtime.ObjectCopier
-
 	// Expected type of objects in the underlying cache.
 	objectType reflect.Type
 
@@ -212,7 +208,6 @@ func NewCacherFromConfig(config CacherConfig) *Cacher {
 	cacher := &Cacher{
 		ready:       newReady(),
 		storage:     config.Storage,
-		copier:      config.Copier,
 		objectType:  reflect.TypeOf(config.Type),
 		watchCache:  watchCache,
 		reflector:   cache.NewNamedReflector(reflectorName, listerWatcher, config.Type, watchCache, 0),
@@ -343,7 +338,7 @@ func (c *Cacher) Watch(ctx context.Context, key string, resourceVersion string, 
 	c.Lock()
 	defer c.Unlock()
 	forget := forgetWatcher(c, c.watcherIdx, triggerValue, triggerSupported)
-	watcher := newCacheWatcher(c.copier, watchRV, chanSize, initEvents, watchFilterFunction(key, pred), forget, c.versioner)
+	watcher := newCacheWatcher(watchRV, chanSize, initEvents, watchFilterFunction(key, pred), forget, c.versioner)
 
 	c.watchers.addWatcher(watcher, c.watcherIdx, triggerValue, triggerSupported)
 	c.watcherIdx++
@@ -473,10 +468,15 @@ func (c *Cacher) GetToList(ctx context.Context, key string, resourceVersion stri
 // Implements storage.Interface.
 func (c *Cacher) List(ctx context.Context, key string, resourceVersion string, pred SelectionPredicate, listObj runtime.Object) error {
 	pagingEnabled := utilfeature.DefaultFeatureGate.Enabled(features.APIListChunking)
-	if resourceVersion == "" || (pagingEnabled && (len(pred.Continue) > 0 || pred.Limit > 0)) {
+	hasContinuation := pagingEnabled && len(pred.Continue) > 0
+	hasLimit := pagingEnabled && pred.Limit > 0 && resourceVersion != "0"
+	if resourceVersion == "" || hasContinuation || hasLimit {
 		// If resourceVersion is not specified, serve it from underlying
-		// storage (for backward compatibility). If a continuation or limit is
+		// storage (for backward compatibility). If a continuation is
 		// requested, serve it from the underlying storage as well.
+		// Limits are only sent to storage when resourceVersion is non-zero
+		// since the watch cache isn't able to perform continuations, and
+		// limits are ignored when resource version is zero.
 		return c.storage.List(ctx, key, resourceVersion, pred, listObj)
 	}
 
@@ -649,7 +649,15 @@ func (c *Cacher) isStopped() bool {
 }
 
 func (c *Cacher) Stop() {
+	// avoid stopping twice (note: cachers are shared with subresources)
+	if c.isStopped() {
+		return
+	}
 	c.stopLock.Lock()
+	if c.stopped {
+		c.stopLock.Unlock()
+		return
+	}
 	c.stopped = true
 	c.stopLock.Unlock()
 	close(c.stopCh)
@@ -668,7 +676,7 @@ func forgetWatcher(c *Cacher, index int, triggerValue string, triggerSupported b
 			glog.V(1).Infof("Forcing watcher close due to unresponsiveness: %v", c.objectType.String())
 		}
 		// It's possible that the watcher is already not in the structure (e.g. in case of
-		// simulaneous Stop() and terminateAllWatchers(), but it doesn't break anything.
+		// simultaneous Stop() and terminateAllWatchers(), but it doesn't break anything.
 		c.watchers.deleteWatcher(index, triggerValue, triggerSupported)
 	}
 }
@@ -735,7 +743,7 @@ func (lw *cacherListerWatcher) Watch(options metav1.ListOptions) (watch.Interfac
 	return lw.storage.WatchList(context.TODO(), lw.resourcePrefix, options.ResourceVersion, Everything)
 }
 
-// cacherWatch implements watch.Interface to return a single error
+// errWatcher implements watch.Interface to return a single error
 type errWatcher struct {
 	result chan watch.Event
 }
@@ -775,10 +783,9 @@ func (c *errWatcher) Stop() {
 	// no-op
 }
 
-// cacherWatch implements watch.Interface
+// cachWatcher implements watch.Interface
 type cacheWatcher struct {
 	sync.Mutex
-	copier    runtime.ObjectCopier
 	input     chan *watchCacheEvent
 	result    chan watch.Event
 	done      chan struct{}
@@ -788,9 +795,8 @@ type cacheWatcher struct {
 	versioner Versioner
 }
 
-func newCacheWatcher(copier runtime.ObjectCopier, resourceVersion uint64, chanSize int, initEvents []*watchCacheEvent, filter watchFilterFunc, forget func(bool), versioner Versioner) *cacheWatcher {
+func newCacheWatcher(resourceVersion uint64, chanSize int, initEvents []*watchCacheEvent, filter watchFilterFunc, forget func(bool), versioner Versioner) *cacheWatcher {
 	watcher := &cacheWatcher{
-		copier:    copier,
 		input:     make(chan *watchCacheEvent, chanSize),
 		result:    make(chan watch.Event, chanSize),
 		done:      make(chan struct{}),

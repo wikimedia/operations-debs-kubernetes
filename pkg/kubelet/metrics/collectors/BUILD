@@ -3,6 +3,7 @@ load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
 go_library(
     name = "go_default_library",
     srcs = ["volume_stats.go"],
+    importpath = "k8s.io/kubernetes/pkg/kubelet/metrics/collectors",
     visibility = ["//visibility:public"],
     deps = [
         "//pkg/kubelet/apis/stats/v1alpha1:go_default_library",
@@ -20,6 +21,8 @@ go_test(
         "helper_test.go",
         "volume_stats_test.go",
     ],
+    embed = [":go_default_library"],
+    importpath = "k8s.io/kubernetes/pkg/kubelet/metrics/collectors",
     library = ":go_default_library",
     deps = [
         "//pkg/kubelet/apis/stats/v1alpha1:go_default_library",

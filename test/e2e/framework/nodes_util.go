@@ -25,7 +25,6 @@ import (
 	"time"
 
 	"k8s.io/apimachinery/pkg/util/wait"
-	imageutils "k8s.io/kubernetes/test/utils/image"
 )
 
 func EtcdUpgrade(target_storage, target_version string) error {
@@ -55,7 +54,7 @@ func etcdUpgradeGCE(target_storage, target_version string) error {
 		os.Environ(),
 		"TEST_ETCD_VERSION="+target_version,
 		"STORAGE_BACKEND="+target_storage,
-		"TEST_ETCD_IMAGE=3.0.17")
+		"TEST_ETCD_IMAGE=3.1.11")
 
 	_, _, err := RunCmdEnv(env, gceUpgradeScript(), "-l", "-M")
 	return err
@@ -74,7 +73,11 @@ func masterUpgradeGCE(rawV string, enableKubeProxyDaemonSet bool) error {
 		env = append(env,
 			"TEST_ETCD_VERSION="+TestContext.EtcdUpgradeVersion,
 			"STORAGE_BACKEND="+TestContext.EtcdUpgradeStorage,
-			"TEST_ETCD_IMAGE=3.0.17")
+			"TEST_ETCD_IMAGE=3.1.11")
+	} else {
+		// In e2e tests, we skip the confirmation prompt about
+		// implicit etcd upgrades to simulate the user entering "y".
+		env = append(env, "TEST_ALLOW_IMPLICIT_ETCD_UPGRADE=true")
 	}
 
 	v := "v" + rawV
@@ -286,7 +289,7 @@ func gceUpgradeScript() string {
 func waitForSSHTunnels() {
 	Logf("Waiting for SSH tunnels to establish")
 	RunKubectl("run", "ssh-tunnel-test",
-		"--image="+imageutils.GetBusyBoxImage(),
+		"--image=busybox",
 		"--restart=Never",
 		"--command", "--",
 		"echo", "Hello")

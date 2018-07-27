@@ -14,6 +14,7 @@ go_test(
         "range_allocator_test.go",
         "timeout_test.go",
     ],
+    importpath = "k8s.io/kubernetes/pkg/controller/node/ipam",
     library = ":go_default_library",
     deps = [
         "//pkg/controller:go_default_library",
@@ -40,6 +41,7 @@ go_library(
         "range_allocator.go",
         "timeout.go",
     ],
+    importpath = "k8s.io/kubernetes/pkg/controller/node/ipam",
     deps = [
         "//pkg/api/v1/node:go_default_library",
         "//pkg/cloudprovider:go_default_library",

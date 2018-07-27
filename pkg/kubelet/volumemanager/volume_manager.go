@@ -41,6 +41,7 @@ import (
 	"k8s.io/kubernetes/pkg/kubelet/volumemanager/reconciler"
 	"k8s.io/kubernetes/pkg/util/mount"
 	"k8s.io/kubernetes/pkg/volume"
+	"k8s.io/kubernetes/pkg/volume/util"
 	"k8s.io/kubernetes/pkg/volume/util/operationexecutor"
 	"k8s.io/kubernetes/pkg/volume/util/types"
 	"k8s.io/kubernetes/pkg/volume/util/volumehelper"
@@ -168,8 +169,8 @@ func NewVolumeManager(
 			kubeClient,
 			volumePluginMgr,
 			recorder,
-			checkNodeCapabilitiesBeforeMount),
-		),
+			checkNodeCapabilitiesBeforeMount,
+			util.NewBlockVolumePathHandler())),
 	}
 
 	vm.desiredStateOfWorldPopulator = populator.NewDesiredStateOfWorldPopulator(
@@ -255,6 +256,8 @@ func (vm *volumeManager) GetMountedVolumesForPod(podName types.UniquePodName) co
 	for _, mountedVolume := range vm.actualStateOfWorld.GetMountedVolumesForPod(podName) {
 		podVolumes[mountedVolume.OuterVolumeSpecName] = container.VolumeInfo{
 			Mounter:             mountedVolume.Mounter,
+			BlockVolumeMapper:   mountedVolume.BlockVolumeMapper,
+			ReadOnly:            mountedVolume.VolumeSpec.ReadOnly,
 			InnerVolumeSpecName: mountedVolume.InnerVolumeSpecName,
 		}
 	}

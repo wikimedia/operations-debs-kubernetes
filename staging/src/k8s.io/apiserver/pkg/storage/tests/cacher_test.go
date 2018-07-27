@@ -92,7 +92,7 @@ func AddObjectMetaFieldsSet(source fields.Set, objectMeta *metav1.ObjectMeta, ha
 }
 
 func newEtcdTestStorage(t *testing.T, prefix string) (*etcdtesting.EtcdTestServer, storage.Interface) {
-	server, _ := etcdtesting.NewUnsecuredEtcd3TestClientServer(t, scheme)
+	server, _ := etcdtesting.NewUnsecuredEtcd3TestClientServer(t)
 	storage := etcd3.New(server.V3Client, apitesting.TestCodec(codecs, examplev1.SchemeGroupVersion), prefix, value.IdentityTransformer, true)
 	return server, storage
 }
@@ -103,7 +103,6 @@ func newTestCacher(s storage.Interface, cap int) *storage.Cacher {
 		CacheCapacity:  cap,
 		Storage:        s,
 		Versioner:      etcdstorage.APIObjectVersioner{},
-		Copier:         scheme,
 		Type:           &example.Pod{},
 		ResourcePrefix: prefix,
 		KeyFunc:        func(obj runtime.Object) (string, error) { return storage.NamespaceKeyFunc(prefix, obj) },
@@ -165,6 +164,62 @@ func TestGet(t *testing.T) {
 
 	if err := cacher.Get(context.TODO(), "pods/ns/bar", fooCreated.ResourceVersion, result, false); !storage.IsNotFound(err) {
 		t.Errorf("Unexpected error: %v", err)
+	}
+}
+
+func TestGetToList(t *testing.T) {
+	server, etcdStorage := newEtcdTestStorage(t, etcdtest.PathPrefix())
+	defer server.Terminate(t)
+	cacher := newTestCacher(etcdStorage, 10)
+	defer cacher.Stop()
+
+	storedObj := updatePod(t, etcdStorage, makeTestPod("foo"), nil)
+	key := "pods/" + storedObj.Namespace + "/" + storedObj.Name
+
+	tests := []struct {
+		key         string
+		pred        storage.SelectionPredicate
+		expectedOut []*example.Pod
+	}{{ // test GetToList on existing key
+		key:         key,
+		pred:        storage.Everything,
+		expectedOut: []*example.Pod{storedObj},
+	}, { // test GetToList on non-existing key
+		key:         "/non-existing",
+		pred:        storage.Everything,
+		expectedOut: nil,
+	}, { // test GetToList with matching pod name
+		key: "/non-existing",
+		pred: storage.SelectionPredicate{
+			Label: labels.Everything(),
+			Field: fields.ParseSelectorOrDie("metadata.name!=" + storedObj.Name),
+			GetAttrs: func(obj runtime.Object) (labels.Set, fields.Set, bool, error) {
+				pod := obj.(*example.Pod)
+				return nil, fields.Set{"metadata.name": pod.Name}, pod.Initializers != nil, nil
+			},
+		},
+		expectedOut: nil,
+	}}
+
+	for i, tt := range tests {
+		out := &example.PodList{}
+		err := cacher.GetToList(context.TODO(), tt.key, "", tt.pred, out)
+		if err != nil {
+			t.Fatalf("GetToList failed: %v", err)
+		}
+		if len(out.ResourceVersion) == 0 {
+			t.Errorf("#%d: unset resourceVersion", i)
+		}
+		if len(out.Items) != len(tt.expectedOut) {
+			t.Errorf("#%d: length of list want=%d, get=%d", i, len(tt.expectedOut), len(out.Items))
+			continue
+		}
+		for j, wantPod := range tt.expectedOut {
+			getPod := &out.Items[j]
+			if !reflect.DeepEqual(wantPod, getPod) {
+				t.Errorf("#%d: pod want=%#v, get=%#v", i, wantPod, getPod)
+			}
+		}
 	}
 }
 

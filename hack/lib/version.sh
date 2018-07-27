@@ -40,12 +40,12 @@ kube::version::get_version_vars() {
   # If the kubernetes source was exported through git archive, then
   # we likely don't have a git tree, but these magic values may be filled in.
   if [[ '%' == "%" ]]; then
-    KUBE_GIT_COMMIT='9d72fafc46543ebdad024b7577012268bab543a7'
+    KUBE_GIT_COMMIT='57729ea3d9a1b75f3fc7bbbadc597ba707d47c8a'
     KUBE_GIT_TREE_STATE="archive"
-    # When a 'git archive' is exported, the 'tag: v1.8.14' below will look
+    # When a 'git archive' is exported, the 'tag: v1.9.9' below will look
     # something like 'HEAD -> release-1.8, tag: v1.8.3' where then 'tag: '
     # can be extracted from it.
-    if [[ 'tag: v1.8.14' =~ tag:\ (v[^ ,]+) ]]; then
+    if [[ 'tag: v1.9.9' =~ tag:\ (v[^ ,]+) ]]; then
      KUBE_GIT_VERSION="${BASH_REMATCH[1]}"
     fi
   fi
@@ -89,7 +89,7 @@ kube::version::get_version_vars() {
       # Try to match the "git describe" output to a regex to try to extract
       # the "major" and "minor" versions and whether this is the exact tagged
       # version or whether the tree is between two tagged versions.
-      if [[ "${KUBE_GIT_VERSION}" =~ ^v([0-9]+)\.([0-9]+)(\.[0-9]+)?([-].*)?$ ]]; then
+      if [[ "${KUBE_GIT_VERSION}" =~ ^v([0-9]+)\.([0-9]+)(\.[0-9]+)?([-].*)?([+].*)?$ ]]; then
         KUBE_GIT_MAJOR=${BASH_REMATCH[1]}
         KUBE_GIT_MINOR=${BASH_REMATCH[2]}
         if [[ -n "${BASH_REMATCH[4]}" ]]; then

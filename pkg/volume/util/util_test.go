@@ -27,8 +27,8 @@ import (
 	utiltesting "k8s.io/client-go/util/testing"
 	// util.go uses api.Codecs.LegacyCodec so import this package to do some
 	// resource initialization.
-	_ "k8s.io/kubernetes/pkg/api/install"
-	"k8s.io/kubernetes/pkg/api/v1/helper"
+	_ "k8s.io/kubernetes/pkg/apis/core/install"
+	"k8s.io/kubernetes/pkg/apis/core/v1/helper"
 	"k8s.io/kubernetes/pkg/util/mount"
 )
 
