@@ -52,8 +52,7 @@ type quotaEvaluator struct {
 	// lockAcquisitionFunc acquires any required locks and returns a cleanup method to defer
 	lockAcquisitionFunc func([]api.ResourceQuota) func()
 
-	// how quota was configured
-	quotaConfiguration quota.Configuration
+	ignoredResources map[schema.GroupResource]struct{}
 
 	// registry that knows how to measure usage for objects
 	registry quota.Registry
@@ -110,7 +109,7 @@ func newAdmissionWaiter(a admission.Attributes) *admissionWaiter {
 // NewQuotaEvaluator configures an admission controller that can enforce quota constraints
 // using the provided registry.  The registry must have the capability to handle group/kinds that
 // are persisted by the server this admission controller is intercepting
-func NewQuotaEvaluator(quotaAccessor QuotaAccessor, quotaConfiguration quota.Configuration, lockAcquisitionFunc func([]api.ResourceQuota) func(), config *resourcequotaapi.Configuration, workers int, stopCh <-chan struct{}) Evaluator {
+func NewQuotaEvaluator(quotaAccessor QuotaAccessor, ignoredResources map[schema.GroupResource]struct{}, quotaRegistry quota.Registry, lockAcquisitionFunc func([]api.ResourceQuota) func(), config *resourcequotaapi.Configuration, workers int, stopCh <-chan struct{}) Evaluator {
 	// if we get a nil config, just create an empty default.
 	if config == nil {
 		config = &resourcequotaapi.Configuration{}
@@ -120,8 +119,8 @@ func NewQuotaEvaluator(quotaAccessor QuotaAccessor, quotaConfiguration quota.Con
 		quotaAccessor:       quotaAccessor,
 		lockAcquisitionFunc: lockAcquisitionFunc,
 
-		quotaConfiguration: quotaConfiguration,
-		registry:           generic.NewRegistry(quotaConfiguration.Evaluators()),
+		ignoredResources: ignoredResources,
+		registry:         quotaRegistry,
 
 		queue:      workqueue.NewNamed("admission_quota_controller"),
 		work:       map[string][]*admissionWaiter{},
@@ -524,7 +523,7 @@ func (e *quotaEvaluator) Evaluate(a admission.Attributes) error {
 	// is this resource ignored?
 	gvr := a.GetResource()
 	gr := gvr.GroupResource()
-	if _, ok := e.quotaConfiguration.IgnoredResources()[gr]; ok {
+	if _, ok := e.ignoredResources[gr]; ok {
 		return nil
 	}
 
@@ -583,6 +582,11 @@ func (e *quotaEvaluator) completeWork(ns string) {
 	e.inProgress.Delete(ns)
 }
 
+// getWork returns a namespace, a list of work items in that
+// namespace, and a shutdown boolean.  If not shutdown then the return
+// must eventually be followed by a call on completeWork for the
+// returned namespace (regardless of whether the work item list is
+// empty).
 func (e *quotaEvaluator) getWork() (string, []*admissionWaiter, bool) {
 	uncastNS, shutdown := e.queue.Get()
 	if shutdown {
@@ -599,15 +603,8 @@ func (e *quotaEvaluator) getWork() (string, []*admissionWaiter, bool) {
 	work := e.work[ns]
 	delete(e.work, ns)
 	delete(e.dirtyWork, ns)
-
-	if len(work) != 0 {
-		e.inProgress.Insert(ns)
-		return ns, work, false
-	}
-
-	e.queue.Done(ns)
-	e.inProgress.Delete(ns)
-	return ns, []*admissionWaiter{}, false
+	e.inProgress.Insert(ns)
+	return ns, work, false
 }
 
 // prettyPrint formats a resource list for usage in errors

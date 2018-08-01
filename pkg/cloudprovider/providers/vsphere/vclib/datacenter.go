@@ -138,14 +138,8 @@ func (dc *Datacenter) GetDatastoreByPath(ctx context.Context, vmDiskPath string)
 		glog.Errorf("Failed to parse vmDiskPath: %s", vmDiskPath)
 		return nil, errors.New("Failed to parse vmDiskPath")
 	}
-	finder := getFinder(dc)
-	ds, err := finder.Datastore(ctx, datastorePathObj.Datastore)
-	if err != nil {
-		glog.Errorf("Failed while searching for datastore: %s. err: %+v", datastorePathObj.Datastore, err)
-		return nil, err
-	}
-	datastore := Datastore{ds, dc}
-	return &datastore, nil
+
+	return dc.GetDatastoreByName(ctx, datastorePathObj.Datastore)
 }
 
 // GetDatastoreByName gets the Datastore object for the given datastore name
@@ -161,20 +155,16 @@ func (dc *Datacenter) GetDatastoreByName(ctx context.Context, name string) (*Dat
 }
 
 // GetResourcePool gets the resource pool for the given path
-func (dc *Datacenter) GetResourcePool(ctx context.Context, computePath string) (*object.ResourcePool, error) {
+func (dc *Datacenter) GetResourcePool(ctx context.Context, resourcePoolPath string) (*object.ResourcePool, error) {
 	finder := getFinder(dc)
-	var computeResource *object.ComputeResource
+	var resourcePool *object.ResourcePool
 	var err error
-	if computePath == "" {
-		computeResource, err = finder.DefaultComputeResource(ctx)
-	} else {
-		computeResource, err = finder.ComputeResource(ctx, computePath)
-	}
+	resourcePool, err = finder.ResourcePoolOrDefault(ctx, resourcePoolPath)
 	if err != nil {
-		glog.Errorf("Failed to get the ResourcePool for computePath '%s'. err: %+v", computePath, err)
+		glog.Errorf("Failed to get the ResourcePool for path '%s'. err: %+v", resourcePoolPath, err)
 		return nil, err
 	}
-	return computeResource.ResourcePool(ctx)
+	return resourcePool, nil
 }
 
 // GetFolderByPath gets the Folder Object from the given folder path

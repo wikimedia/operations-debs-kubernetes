@@ -26,8 +26,8 @@ set -o pipefail
 ### Hardcoded constants
 DEFAULT_CNI_VERSION="v0.6.0"
 DEFAULT_CNI_SHA1="d595d3ded6499a64e8dac02466e2f5f2ce257c9f" 
-DEFAULT_NPD_VERSION="v0.4.1"
-DEFAULT_NPD_SHA1="a57a3fe64cab8a18ec654f5cef0aec59dae62568"
+DEFAULT_NPD_VERSION="v0.5.0"
+DEFAULT_NPD_SHA1="650ecfb2ae495175ee43706d0bd862a1ea7f1395"
 DEFAULT_MOUNTER_TAR_SHA="8003b798cf33c7f91320cd6ee5cec4fa22244571"
 ###
 
@@ -54,6 +54,7 @@ EOF
 
 function download-kube-env {
   # Fetch kube-env from GCE metadata server.
+  (umask 077;
   local -r tmp_kube_env="/tmp/kube-env.yaml"
   curl --fail --retry 5 --retry-delay 3 ${CURL_RETRY_CONNREFUSED} --silent --show-error \
     -H "X-Google-Metadata-Request: True" \
@@ -66,10 +67,12 @@ for k,v in yaml.load(sys.stdin).iteritems():
   print("readonly {var}={value}".format(var = k, value = pipes.quote(str(v))))
 ''' < "${tmp_kube_env}" > "${KUBE_HOME}/kube-env")
   rm -f "${tmp_kube_env}"
+  )
 }
 
 function download-kube-master-certs {
   # Fetch kube-env from GCE metadata server.
+  (umask 077;
   local -r tmp_kube_master_certs="/tmp/kube-master-certs.yaml"
   curl --fail --retry 5 --retry-delay 3 ${CURL_RETRY_CONNREFUSED} --silent --show-error \
     -H "X-Google-Metadata-Request: True" \
@@ -82,6 +85,7 @@ for k,v in yaml.load(sys.stdin).iteritems():
   print("readonly {var}={value}".format(var = k, value = pipes.quote(str(v))))
 ''' < "${tmp_kube_master_certs}" > "${KUBE_HOME}/kube-master-certs")
   rm -f "${tmp_kube_master_certs}"
+  )
 }
 
 function validate-hash {
@@ -171,15 +175,15 @@ function install-node-problem-detector {
       local -r npd_version="${DEFAULT_NPD_VERSION}"
       local -r npd_sha1="${DEFAULT_NPD_SHA1}"
   fi
+  local -r npd_tar="node-problem-detector-${npd_version}.tar.gz"
 
-  if is-preloaded "node-problem-detector" "${npd_sha1}"; then
+  if is-preloaded "${npd_tar}" "${npd_sha1}"; then
     echo "node-problem-detector is preloaded."
     return
   fi
 
   echo "Downloading node problem detector."
   local -r npd_release_path="https://storage.googleapis.com/kubernetes-release"
-  local -r npd_tar="node-problem-detector-${npd_version}.tar.gz"
   download-or-bust "${npd_sha1}" "${npd_release_path}/node-problem-detector/${npd_tar}"
   local -r npd_dir="${KUBE_HOME}/node-problem-detector"
   mkdir -p "${npd_dir}"
@@ -230,12 +234,12 @@ function install-kube-manifests {
   echo "Downloading k8s manifests tar"
   download-or-bust "${manifests_tar_hash}" "${manifests_tar_urls[@]}"
   tar xzf "${KUBE_HOME}/${manifests_tar}" -C "${dst_dir}" --overwrite
-  local -r kube_addon_registry="${KUBE_ADDON_REGISTRY:-gcr.io/google_containers}"
-  if [[ "${kube_addon_registry}" != "gcr.io/google_containers" ]]; then
+  local -r kube_addon_registry="${KUBE_ADDON_REGISTRY:-k8s.gcr.io}"
+  if [[ "${kube_addon_registry}" != "k8s.gcr.io" ]]; then
     find "${dst_dir}" -name \*.yaml -or -name \*.yaml.in | \
-      xargs sed -ri "s@(image:\s.*)gcr.io/google_containers@\1${kube_addon_registry}@"
+      xargs sed -ri "s@(image:\s.*)k8s.gcr.io@\1${kube_addon_registry}@"
     find "${dst_dir}" -name \*.manifest -or -name \*.json | \
-      xargs sed -ri "s@(image\":\s+\")gcr.io/google_containers@\1${kube_addon_registry}@"
+      xargs sed -ri "s@(image\":\s+\")k8s.gcr.io@\1${kube_addon_registry}@"
   fi
   cp "${dst_dir}/kubernetes/gci-trusty/gci-configure-helper.sh" "${KUBE_BIN}/configure-helper.sh"
   cp "${dst_dir}/kubernetes/gci-trusty/health-monitor.sh" "${KUBE_BIN}/health-monitor.sh"

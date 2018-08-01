@@ -29,14 +29,23 @@ go_library(
         "unsafe_struct.go",
         "unsafe_type.go",
     ] + select({
-        "@io_bazel_rules_go//go/platform:darwin_amd64": [
+        "@io_bazel_rules_go//go/platform:386": [
+            "relfect2_386.s",
+        ],
+        "@io_bazel_rules_go//go/platform:amd64": [
             "reflect2_amd64.s",
         ],
-        "@io_bazel_rules_go//go/platform:linux_amd64": [
-            "reflect2_amd64.s",
+        "@io_bazel_rules_go//go/platform:amd64p32": [
+            "relfect2_amd64p32.s",
         ],
-        "@io_bazel_rules_go//go/platform:windows_amd64": [
-            "reflect2_amd64.s",
+        "@io_bazel_rules_go//go/platform:arm": [
+            "relfect2_arm.s",
+        ],
+        "@io_bazel_rules_go//go/platform:arm64": [
+            "relfect2_arm64.s",
+        ],
+        "@io_bazel_rules_go//go/platform:s390x": [
+            "relfect2_s390x.s",
         ],
         "//conditions:default": [],
     }),

@@ -51,5 +51,9 @@ func (az *Cloud) DeleteFileShare(accountName, accountKey, shareName string) erro
 	}
 	glog.V(4).Infof("share %s deleted", shareName)
 	return nil
+}
 
+// ResizeFileShare resizes a file share
+func (az *Cloud) ResizeFileShare(accountName, accountKey, name string, sizeGiB int) error {
+	return az.resizeFileShare(accountName, accountKey, name, sizeGiB)
 }

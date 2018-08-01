@@ -14,7 +14,6 @@ go_test(
         "setup_test.go",
         "webhook_test.go",
     ],
-    importpath = "k8s.io/kubernetes/test/integration/examples",
     tags = ["integration"],
     deps = [
         "//cmd/kube-apiserver/app:go_default_library",

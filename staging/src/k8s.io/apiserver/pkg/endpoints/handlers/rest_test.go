@@ -40,6 +40,7 @@ import (
 	examplev1 "k8s.io/apiserver/pkg/apis/example/v1"
 	"k8s.io/apiserver/pkg/endpoints/request"
 	"k8s.io/apiserver/pkg/registry/rest"
+	utiltrace "k8s.io/apiserver/pkg/util/trace"
 )
 
 var (
@@ -347,7 +348,7 @@ func (tc *patchTestCase) Run(t *testing.T) {
 			name,
 			patchType,
 			patch,
-			namer, creater, defaulter, convertor, kind, resource, codec)
+			namer, creater, defaulter, convertor, kind, resource, codec, utiltrace.New("Patch"+name))
 		if len(tc.expectedError) != 0 {
 			if err == nil || err.Error() != tc.expectedError {
 				t.Errorf("%s: expected error %v, but got %v", tc.name, tc.expectedError, err)
@@ -532,8 +533,7 @@ func TestPatchResourceWithConflict(t *testing.T) {
 		startingPod: &example.Pod{},
 		changedPod:  &example.Pod{},
 		updatePod:   &example.Pod{},
-
-		expectedError: `Operation cannot be fulfilled on pods.example.apiserver.k8s.io "foo": existing 2, new 1`,
+		expectedPod: &example.Pod{},
 	}
 
 	tc.startingPod.Name = name
@@ -556,6 +556,13 @@ func TestPatchResourceWithConflict(t *testing.T) {
 	tc.updatePod.ResourceVersion = "2"
 	tc.updatePod.APIVersion = examplev1.SchemeGroupVersion.String()
 	tc.updatePod.Spec.NodeName = "anywhere"
+
+	tc.expectedPod.Name = name
+	tc.expectedPod.Namespace = namespace
+	tc.expectedPod.UID = uid
+	tc.expectedPod.ResourceVersion = "2"
+	tc.expectedPod.APIVersion = examplev1.SchemeGroupVersion.String()
+	tc.expectedPod.Spec.NodeName = "there"
 
 	tc.Run(t)
 }

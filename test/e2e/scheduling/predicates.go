@@ -21,7 +21,6 @@ import (
 	"time"
 
 	"k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
@@ -147,7 +146,7 @@ var _ = SIGDescribe("SchedulerPredicates [Serial]", func() {
 		WaitForSchedulerAfterAction(f, createPausePodAction(f, pausePodConfig{
 			Name:   podName,
 			Labels: map[string]string{"name": "additional"},
-		}), podName, false)
+		}), ns, podName, false)
 		verifyResult(cs, podsNeededForSaturation, 1, ns)
 	})
 
@@ -222,7 +221,7 @@ var _ = SIGDescribe("SchedulerPredicates [Serial]", func() {
 				},
 			},
 		}
-		WaitForSchedulerAfterAction(f, createPausePodAction(f, conf), podName, false)
+		WaitForSchedulerAfterAction(f, createPausePodAction(f, conf), ns, podName, false)
 		verifyResult(cs, podsNeededForSaturation, 1, ns)
 	})
 
@@ -337,7 +336,7 @@ var _ = SIGDescribe("SchedulerPredicates [Serial]", func() {
 				},
 			},
 		}
-		WaitForSchedulerAfterAction(f, createPausePodAction(f, conf), podName, false)
+		WaitForSchedulerAfterAction(f, createPausePodAction(f, conf), ns, podName, false)
 		verifyResult(cs, len(fillerPods), 1, ns)
 	})
 
@@ -362,41 +361,8 @@ var _ = SIGDescribe("SchedulerPredicates [Serial]", func() {
 			},
 		}
 
-		WaitForSchedulerAfterAction(f, createPausePodAction(f, conf), podName, false)
+		WaitForSchedulerAfterAction(f, createPausePodAction(f, conf), ns, podName, false)
 		verifyResult(cs, 0, 1, ns)
-	})
-
-	It("validates that a pod with an invalid NodeAffinity is rejected", func() {
-		By("Trying to launch a pod with an invalid Affinity data.")
-		validationChangedVersion := utilversion.MustParseSemantic("v1.10.2")
-		validationChanged, err := framework.ServerVersionGTE(validationChangedVersion, f.ClientSet.Discovery())
-		if err != nil {
-			framework.Failf("Unable to check server version: %v", err)
-		}
-		if validationChanged {
-			// See https://github.com/kubernetes/kubernetes/issues/63815
-			framework.Skipf("NodeAffinity validation changed in 1.10.2")
-		}
-
-		podName := "without-label"
-		_, err = cs.CoreV1().Pods(ns).Create(initPausePod(f, pausePodConfig{
-			Name: podName,
-			Affinity: &v1.Affinity{
-				NodeAffinity: &v1.NodeAffinity{
-					RequiredDuringSchedulingIgnoredDuringExecution: &v1.NodeSelector{
-						NodeSelectorTerms: []v1.NodeSelectorTerm{
-							{
-								MatchExpressions: []v1.NodeSelectorRequirement{},
-							},
-						},
-					},
-				},
-			},
-		}))
-
-		if err == nil || !errors.IsInvalid(err) {
-			framework.Failf("Expect error of invalid, got : %v", err)
-		}
 	})
 
 	/*
@@ -471,7 +437,7 @@ var _ = SIGDescribe("SchedulerPredicates [Serial]", func() {
 			},
 			Labels: map[string]string{"name": "restricted"},
 		}
-		WaitForSchedulerAfterAction(f, createPausePodAction(f, conf), podName, false)
+		WaitForSchedulerAfterAction(f, createPausePodAction(f, conf), ns, podName, false)
 		verifyResult(cs, 0, 1, ns)
 	})
 
@@ -595,11 +561,11 @@ var _ = SIGDescribe("SchedulerPredicates [Serial]", func() {
 			NodeSelector: map[string]string{labelKey: labelValue},
 		}
 
-		WaitForSchedulerAfterAction(f, createPausePodAction(f, conf), podNameNoTolerations, false)
+		WaitForSchedulerAfterAction(f, createPausePodAction(f, conf), ns, podNameNoTolerations, false)
 		verifyResult(cs, 0, 1, ns)
 
 		By("Removing taint off the node")
-		WaitForSchedulerAfterAction(f, removeTaintFromNodeAction(cs, nodeName, testTaint), podNameNoTolerations, true)
+		WaitForSchedulerAfterAction(f, removeTaintFromNodeAction(cs, nodeName, testTaint), ns, podNameNoTolerations, true)
 		verifyResult(cs, 1, 0, ns)
 	})
 
@@ -744,10 +710,10 @@ func createPausePodAction(f *framework.Framework, conf pausePodConfig) common.Ac
 
 // WaitForSchedulerAfterAction performs the provided action and then waits for
 // scheduler to act on the given pod.
-func WaitForSchedulerAfterAction(f *framework.Framework, action common.Action, podName string, expectSuccess bool) {
+func WaitForSchedulerAfterAction(f *framework.Framework, action common.Action, ns, podName string, expectSuccess bool) {
 	predicate := scheduleFailureEvent(podName)
 	if expectSuccess {
-		predicate = scheduleSuccessEvent(podName, "" /* any node */)
+		predicate = scheduleSuccessEvent(ns, podName, "" /* any node */)
 	}
 	success, err := common.ObserveEventAfterAction(f, predicate, action)
 	Expect(err).NotTo(HaveOccurred())

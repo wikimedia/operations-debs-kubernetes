@@ -48,6 +48,7 @@ const kubernetesServiceName = "kubernetes"
 type Controller struct {
 	ServiceClient   coreclient.ServicesGetter
 	NamespaceClient coreclient.NamespacesGetter
+	EventClient     coreclient.EventsGetter
 
 	ServiceClusterIPRegistry rangeallocation.RangeRegistry
 	ServiceClusterIPInterval time.Duration
@@ -77,10 +78,11 @@ type Controller struct {
 }
 
 // NewBootstrapController returns a controller for watching the core capabilities of the master
-func (c *completedConfig) NewBootstrapController(legacyRESTStorage corerest.LegacyRESTStorage, serviceClient coreclient.ServicesGetter, nsClient coreclient.NamespacesGetter) *Controller {
+func (c *completedConfig) NewBootstrapController(legacyRESTStorage corerest.LegacyRESTStorage, serviceClient coreclient.ServicesGetter, nsClient coreclient.NamespacesGetter, eventClient coreclient.EventsGetter) *Controller {
 	return &Controller{
 		ServiceClient:   serviceClient,
 		NamespaceClient: nsClient,
+		EventClient:     eventClient,
 
 		EndpointReconciler: c.ExtraConfig.EndpointReconcilerConfig.Reconciler,
 		EndpointInterval:   c.ExtraConfig.EndpointReconcilerConfig.Interval,
@@ -124,8 +126,8 @@ func (c *Controller) Start() {
 		return
 	}
 
-	repairClusterIPs := servicecontroller.NewRepair(c.ServiceClusterIPInterval, c.ServiceClient, &c.ServiceClusterIPRange, c.ServiceClusterIPRegistry)
-	repairNodePorts := portallocatorcontroller.NewRepair(c.ServiceNodePortInterval, c.ServiceClient, c.ServiceNodePortRange, c.ServiceNodePortRegistry)
+	repairClusterIPs := servicecontroller.NewRepair(c.ServiceClusterIPInterval, c.ServiceClient, c.EventClient, &c.ServiceClusterIPRange, c.ServiceClusterIPRegistry)
+	repairNodePorts := portallocatorcontroller.NewRepair(c.ServiceNodePortInterval, c.ServiceClient, c.EventClient, c.ServiceNodePortRange, c.ServiceNodePortRegistry)
 
 	// run all of the controllers once prior to returning from Start.
 	if err := repairClusterIPs.RunOnce(); err != nil {
@@ -150,22 +152,7 @@ func (c *Controller) Stop() {
 		c.runner.Stop()
 	}
 	endpointPorts := createEndpointPortSpec(c.PublicServicePort, "https", c.ExtraEndpointPorts)
-	finishedReconciling := make(chan struct{})
-	go func() {
-		defer close(finishedReconciling)
-		glog.Infof("Shutting down kubernetes service endpoint reconciler")
-		if err := c.EndpointReconciler.StopReconciling("kubernetes", c.PublicIP, endpointPorts); err != nil {
-			glog.Error(err)
-		}
-	}()
-
-	select {
-	case <-finishedReconciling:
-		// done
-	case <-time.After(2 * c.EndpointInterval):
-		// don't block server shutdown forever if we can't reach etcd to remove ourselves
-		glog.Warning("StopReconciling() timed out")
-	}
+	c.EndpointReconciler.StopReconciling("kubernetes", c.PublicIP, endpointPorts)
 }
 
 // RunKubernetesNamespaces periodically makes sure that all internal namespaces exist
@@ -270,7 +257,7 @@ func (c *Controller) CreateOrUpdateMasterServiceIfNeeded(serviceName string, ser
 			// maintained by this code, not by the pod selector
 			Selector:        nil,
 			ClusterIP:       serviceIP.String(),
-			SessionAffinity: api.ServiceAffinityClientIP,
+			SessionAffinity: api.ServiceAffinityNone,
 			Type:            serviceType,
 		},
 	}

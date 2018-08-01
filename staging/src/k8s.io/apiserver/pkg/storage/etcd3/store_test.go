@@ -1186,17 +1186,21 @@ func testSetup(t *testing.T) (context.Context, *store, *integration.ClusterV3) {
 	cluster := integration.NewClusterV3(t, &integration.ClusterConfig{Size: 1})
 	store := newStore(cluster.RandClient(), false, true, codec, "", prefixTransformer{prefix: []byte(defaultTestPrefix)})
 	ctx := context.Background()
+	// As 30s is the default timeout for testing in glboal configuration,
+	// we cannot wait longer than that in a single time: change it to 10
+	// for testing purposes. See apimachinery/pkg/util/wait/wait.go
+	store.leaseManager.setLeaseReuseDurationSeconds(1)
 	return ctx, store, cluster
 }
 
-// testPropogateStore helps propogates store with objects, automates key generation, and returns
+// testPropogateStore helps propagates store with objects, automates key generation, and returns
 // keys and stored objects.
 func testPropogateStore(ctx context.Context, t *testing.T, store *store, obj *example.Pod) (string, *example.Pod) {
 	// Setup store with a key and grab the output for returning.
 	key := "/testkey"
 	err := store.unconditionalDelete(ctx, key, &example.Pod{})
 	if err != nil && !storage.IsNotFound(err) {
-		t.Fatal("Cleanup failed: %v", err)
+		t.Fatalf("Cleanup failed: %v", err)
 	}
 	setOutput := &example.Pod{}
 	if err := store.Create(ctx, key, obj, setOutput, 0); err != nil {

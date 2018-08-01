@@ -10,11 +10,11 @@ go_test(
     name = "go_default_test",
     srcs = [
         "compact_test.go",
+        "lease_manager_test.go",
         "store_test.go",
         "watcher_test.go",
     ],
-    importpath = "k8s.io/apiserver/pkg/storage/etcd3",
-    library = ":go_default_library",
+    embed = [":go_default_library"],
     deps = [
         "//vendor/github.com/coreos/etcd/clientv3:go_default_library",
         "//vendor/github.com/coreos/etcd/etcdserver/api/v3rpc/rpctypes:go_default_library",
@@ -46,6 +46,7 @@ go_library(
         "compact.go",
         "errors.go",
         "event.go",
+        "lease_manager.go",
         "store.go",
         "watcher.go",
     ],

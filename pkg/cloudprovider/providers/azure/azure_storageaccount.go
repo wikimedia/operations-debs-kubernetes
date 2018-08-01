@@ -31,10 +31,7 @@ type accountWithLocation struct {
 
 // getStorageAccounts gets name, type, location of all storage accounts in a resource group which matches matchingAccountType, matchingLocation
 func (az *Cloud) getStorageAccounts(matchingAccountType, matchingLocation string) ([]accountWithLocation, error) {
-	az.operationPollRateLimiter.Accept()
-	glog.V(10).Infof("StorageAccountClient.ListByResourceGroup(%v): start", az.ResourceGroup)
 	result, err := az.StorageAccountClient.ListByResourceGroup(az.ResourceGroup)
-	glog.V(10).Infof("StorageAccountClient.ListByResourceGroup(%v): end", az.ResourceGroup)
 	if err != nil {
 		return nil, err
 	}
@@ -63,10 +60,7 @@ func (az *Cloud) getStorageAccounts(matchingAccountType, matchingLocation string
 
 // getStorageAccesskey gets the storage account access key
 func (az *Cloud) getStorageAccesskey(account string) (string, error) {
-	az.operationPollRateLimiter.Accept()
-	glog.V(10).Infof("StorageAccountClient.ListKeys(%q): start", account)
 	result, err := az.StorageAccountClient.ListKeys(az.ResourceGroup, account)
-	glog.V(10).Infof("StorageAccountClient.ListKeys(%q): end", account)
 	if err != nil {
 		return "", err
 	}
@@ -113,8 +107,9 @@ func (az *Cloud) ensureStorageAccount(accountName, accountType, location, genAcc
 			glog.V(2).Infof("azure - no matching account found, begin to create a new account %s in resource group %s, location: %s, accountType: %s",
 				accountName, az.ResourceGroup, location, accountType)
 			cp := storage.AccountCreateParameters{
-				Sku:      &storage.Sku{Name: storage.SkuName(accountType)},
-				Tags:     &map[string]*string{"created-by": to.StringPtr("azure")},
+				Sku:  &storage.Sku{Name: storage.SkuName(accountType)},
+				Tags: &map[string]*string{"created-by": to.StringPtr("azure")},
+				AccountPropertiesCreateParameters: &storage.AccountPropertiesCreateParameters{EnableHTTPSTrafficOnly: to.BoolPtr(true)},
 				Location: &location}
 			cancel := make(chan struct{})
 

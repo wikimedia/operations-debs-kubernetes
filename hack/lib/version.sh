@@ -40,12 +40,12 @@ kube::version::get_version_vars() {
   # If the kubernetes source was exported through git archive, then
   # we likely don't have a git tree, but these magic values may be filled in.
   if [[ '%' == "%" ]]; then
-    KUBE_GIT_COMMIT='57729ea3d9a1b75f3fc7bbbadc597ba707d47c8a'
+    KUBE_GIT_COMMIT='a21fdbd78dde8f5447f5f6c331f7eb6f80bd684e'
     KUBE_GIT_TREE_STATE="archive"
-    # When a 'git archive' is exported, the 'tag: v1.9.9' below will look
+    # When a 'git archive' is exported, the 'tag: v1.10.6, refs/pull/66640/head' below will look
     # something like 'HEAD -> release-1.8, tag: v1.8.3' where then 'tag: '
     # can be extracted from it.
-    if [[ 'tag: v1.9.9' =~ tag:\ (v[^ ,]+) ]]; then
+    if [[ 'tag: v1.10.6, refs/pull/66640/head' =~ tag:\ (v[^ ,]+) ]]; then
      KUBE_GIT_VERSION="${BASH_REMATCH[1]}"
     fi
   fi
@@ -62,7 +62,7 @@ kube::version::get_version_vars() {
       fi
     fi
 
-    # Use git describe to find the version based on annotated tags.
+    # Use git describe to find the version based on tags.
     if [[ -n ${KUBE_GIT_VERSION-} ]] || KUBE_GIT_VERSION=$("${git[@]}" describe --tags --abbrev=14 "${KUBE_GIT_COMMIT}^{commit}" 2>/dev/null); then
       # This translates the "git describe" to an actual semver.org
       # compatible semantic version that looks something like this:
@@ -95,6 +95,13 @@ kube::version::get_version_vars() {
         if [[ -n "${BASH_REMATCH[4]}" ]]; then
           KUBE_GIT_MINOR+="+"
         fi
+      fi
+
+      # If KUBE_GIT_VERSION is not a valid Semantic Version, then refuse to build.
+      if ! [[ "${KUBE_GIT_VERSION}" =~ ^v([0-9]+)\.([0-9]+)(\.[0-9]+)?(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$ ]]; then
+          echo "KUBE_GIT_VERSION should be a valid Semantic Version"
+          echo "Please see more details here: https://semver.org"
+          exit 1
       fi
     fi
   fi
@@ -133,8 +140,8 @@ kube::version::ldflag() {
   local val=${2}
 
   # If you update these, also update the list pkg/version/def.bzl.
-  echo "-X ${KUBE_GO_PACKAGE}/pkg/version.${key}=${val}"
-  echo "-X ${KUBE_GO_PACKAGE}/vendor/k8s.io/client-go/pkg/version.${key}=${val}"
+  echo "-X '${KUBE_GO_PACKAGE}/pkg/version.${key}=${val}'"
+  echo "-X '${KUBE_GO_PACKAGE}/vendor/k8s.io/client-go/pkg/version.${key}=${val}'"
 }
 
 # Prints the value that needs to be passed to the -ldflags parameter of go build

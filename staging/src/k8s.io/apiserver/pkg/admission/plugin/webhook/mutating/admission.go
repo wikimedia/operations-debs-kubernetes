@@ -30,11 +30,10 @@ import (
 	admissionv1beta1 "k8s.io/api/admission/v1beta1"
 	"k8s.io/api/admissionregistration/v1beta1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/serializer/json"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
-	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/apiserver/pkg/admission"
 	"k8s.io/apiserver/pkg/admission/configuration"
 	genericadmissioninit "k8s.io/apiserver/pkg/admission/initializer"
@@ -68,8 +67,7 @@ func Register(plugins *admission.Plugins) {
 
 // WebhookSource can list dynamic webhook plugins.
 type WebhookSource interface {
-	Run(stopCh <-chan struct{})
-	Webhooks() (*v1beta1.MutatingWebhookConfiguration, error)
+	Webhooks() *v1beta1.MutatingWebhookConfiguration
 }
 
 // NewMutatingWebhook returns a generic admission webhook plugin.
@@ -142,14 +140,17 @@ func (a *MutatingWebhook) SetScheme(scheme *runtime.Scheme) {
 // WantsExternalKubeClientSet defines a function which sets external ClientSet for admission plugins that need it
 func (a *MutatingWebhook) SetExternalKubeClientSet(client clientset.Interface) {
 	a.namespaceMatcher.Client = client
-	a.hookSource = configuration.NewMutatingWebhookConfigurationManager(client.AdmissionregistrationV1beta1().MutatingWebhookConfigurations())
 }
 
 // SetExternalKubeInformerFactory implements the WantsExternalKubeInformerFactory interface.
 func (a *MutatingWebhook) SetExternalKubeInformerFactory(f informers.SharedInformerFactory) {
 	namespaceInformer := f.Core().V1().Namespaces()
 	a.namespaceMatcher.NamespaceLister = namespaceInformer.Lister()
-	a.SetReadyFunc(namespaceInformer.Informer().HasSynced)
+	mutatingWebhookConfigurationsInformer := f.Admissionregistration().V1beta1().MutatingWebhookConfigurations()
+	a.hookSource = configuration.NewMutatingWebhookConfigurationManager(mutatingWebhookConfigurationsInformer)
+	a.SetReadyFunc(func() bool {
+		return namespaceInformer.Informer().HasSynced() && mutatingWebhookConfigurationsInformer.Informer().HasSynced()
+	})
 }
 
 // ValidateInitialization implements the InitializationValidator interface.
@@ -172,35 +173,25 @@ func (a *MutatingWebhook) ValidateInitialization() error {
 	if a.defaulter == nil {
 		return fmt.Errorf("MutatingWebhook.defaulter is not properly setup")
 	}
-	go a.hookSource.Run(wait.NeverStop)
 	return nil
 }
 
-func (a *MutatingWebhook) loadConfiguration(attr admission.Attributes) (*v1beta1.MutatingWebhookConfiguration, error) {
-	hookConfig, err := a.hookSource.Webhooks()
-	// if Webhook configuration is disabled, fail open
-	if err == configuration.ErrDisabled {
-		return &v1beta1.MutatingWebhookConfiguration{}, nil
-	}
-	if err != nil {
-		e := apierrors.NewServerTimeout(attr.GetResource().GroupResource(), string(attr.GetOperation()), 1)
-		e.ErrStatus.Message = fmt.Sprintf("Unable to refresh the Webhook configuration: %v", err)
-		e.ErrStatus.Reason = "LoadingConfiguration"
-		e.ErrStatus.Details.Causes = append(e.ErrStatus.Details.Causes, metav1.StatusCause{
-			Type:    "MutatingWebhookConfigurationFailure",
-			Message: "An error has occurred while refreshing the MutatingWebhook configuration, no resources can be created/updated/deleted/connected until a refresh succeeds.",
-		})
-		return nil, e
-	}
-	return hookConfig, nil
+func (a *MutatingWebhook) loadConfiguration(attr admission.Attributes) *v1beta1.MutatingWebhookConfiguration {
+	hookConfig := a.hookSource.Webhooks()
+	return hookConfig
 }
 
 // Admit makes an admission decision based on the request attributes.
 func (a *MutatingWebhook) Admit(attr admission.Attributes) error {
-	hookConfig, err := a.loadConfiguration(attr)
-	if err != nil {
-		return err
+	if rules.IsWebhookConfigurationResource(attr) {
+		return nil
 	}
+
+	if !a.WaitForReady() {
+		return admission.NewForbidden(attr, fmt.Errorf("not yet ready to handle request"))
+	}
+
+	hookConfig := a.loadConfiguration(attr)
 	hooks := hookConfig.Webhooks
 	ctx := context.TODO()
 
@@ -221,7 +212,7 @@ func (a *MutatingWebhook) Admit(attr admission.Attributes) error {
 	}
 
 	// convert the object to the external version before sending it to the webhook
-	versionedAttr := versioned.Attributes{
+	versionedAttr := &versioned.Attributes{
 		Attributes: attr,
 	}
 	if oldObj := attr.GetOldObject(); oldObj != nil {
@@ -281,7 +272,7 @@ func (a *MutatingWebhook) shouldCallHook(h *v1beta1.Webhook, attr admission.Attr
 }
 
 // note that callAttrMutatingHook updates attr
-func (a *MutatingWebhook) callAttrMutatingHook(ctx context.Context, h *v1beta1.Webhook, attr versioned.Attributes) error {
+func (a *MutatingWebhook) callAttrMutatingHook(ctx context.Context, h *v1beta1.Webhook, attr *versioned.Attributes) error {
 	// Make the webhook request
 	request := request.CreateAdmissionReview(attr)
 	client, err := a.clientManager.HookClient(h)
@@ -313,9 +304,24 @@ func (a *MutatingWebhook) callAttrMutatingHook(ctx context.Context, h *v1beta1.W
 	if err != nil {
 		return apierrors.NewInternalError(err)
 	}
-	if _, _, err := a.jsonSerializer.Decode(patchedJS, nil, attr.Object); err != nil {
+
+	var newObject runtime.Object
+	if _, ok := attr.Object.(*unstructured.Unstructured); ok {
+		// Custom Resources don't have corresponding Go struct's.
+		// They are represented as Unstructured.
+		newObject = &unstructured.Unstructured{}
+	} else {
+		newObject, err = a.convertor.Scheme.New(attr.GetKind())
+		if err != nil {
+			return apierrors.NewInternalError(err)
+		}
+	}
+	newObject, _, err = a.jsonSerializer.Decode(patchedJS, nil, newObject)
+	if err != nil {
 		return apierrors.NewInternalError(err)
 	}
+	attr.Object = newObject
+
 	a.defaulter.Default(attr.Object)
 	return nil
 }

@@ -2,7 +2,7 @@ Index: kubernetes/build/lib/release.sh
 ===================================================================
 --- kubernetes.orig/build/lib/release.sh
 +++ kubernetes/build/lib/release.sh
-@@ -294,7 +294,7 @@ function kube::release::create_docker_im
+@@ -293,7 +293,7 @@ function kube::release::create_docker_im
      local docker_tag="${KUBE_GIT_VERSION/+/_}"
      if [[ -z "${docker_tag}" ]]; then
        kube::log::error "git version information missing; cannot create Docker tag"
@@ -11,9 +11,9 @@ Index: kubernetes/build/lib/release.sh
      fi
  
      for wrappable in "${binaries[@]}"; do
-@@ -349,7 +349,7 @@ function kube::release::create_docker_im
-           kube::log::status "Deleting docker image ${docker_image_tag}"
+@@ -353,7 +353,7 @@ function kube::release::create_docker_im
            "${DOCKER[@]}" rmi ${docker_image_tag} &>/dev/null || true
+           "${DOCKER[@]}" rmi ${deprecated_image_tag} &>/dev/null || true
          fi
 -      ) &
 +      )

@@ -42,8 +42,6 @@ func TestWebhookLoopback(t *testing.T) {
 
 	client, _ := startTestServer(t, stopCh, TestServerSetup{
 		ModifyServerRunOptions: func(opts *options.ServerRunOptions) {
-			// Enable the mutating admission webhook
-			opts.Admission.PluginNames = append(opts.Admission.PluginNames, "MutatingAdmissionWebhook")
 		},
 		ModifyServerConfig: func(config *master.Config) {
 			// Avoid resolveable kubernetes service
