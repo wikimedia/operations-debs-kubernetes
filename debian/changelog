@@ -1,3 +1,10 @@
+kubernetes (1.10.6-2) unstable; urgency=medium
+
+  * Drop --api-servers, long deprecated
+  * Add docker-ce in kubernetes-node Depends
+
+ -- Alexandros Kosiaris <akosiaris@wikimedia.org>  Mon, 22 Oct 2018 23:43:33 +0000
+
 kubernetes (1.10.6-1) unstable; urgency=medium
 
   * Update to 1.10.6
