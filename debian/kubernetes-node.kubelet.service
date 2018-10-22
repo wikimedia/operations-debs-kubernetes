@@ -18,7 +18,6 @@ ExecStart=/usr/bin/kubelet \
         $KUBELET_ADDRESS \
         $KUBELET_PORT \
         $KUBELET_HOSTNAME \
-        $KUBELET_API_SERVER \
         $DOCKER_ENDPOINT \
         $CADVISOR_PORT \
         $DAEMON_ARGS
