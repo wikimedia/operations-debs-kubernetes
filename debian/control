@@ -20,7 +20,7 @@ Description: Kubernetes client tools
 
 Package: kubernetes-master
 Architecture: linux-any
-Depends: ${misc:Depends}, ${shlibs:Depends} ,adduser
+Depends: ${misc:Depends}, ${shlibs:Depends}, adduser
 Recommends: ${misc:Recommends}, kubernetes-client
 Built-Using: ${misc:Built-Using}
 Description: Kubernetes services for master host
@@ -38,7 +38,7 @@ Description: Kubernetes services for master host
 Package: kubernetes-node
 Provides: cadvisor
 Architecture: linux-any
-Depends: ${misc:Depends}, ${shlibs:Depends} ,adduser ,docker.io | docker-engine
+Depends: ${misc:Depends}, ${shlibs:Depends}, adduser, docker.io | docker-engine | docker-ce
 Recommends: ${misc:Recommends}, kubernetes-client
 Built-Using: ${misc:Built-Using}
 Description: Kubernetes services for node host
