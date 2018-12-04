@@ -244,8 +244,6 @@ func (ss *scaleSet) GetPrimaryVMSetName() string {
 }
 
 // GetIPByNodeName gets machine private IP and public IP by node name.
-// TODO(feiskyer): Azure vmss doesn't support associating a public IP to single virtual machine yet,
-// fix this after it is supported.
 func (ss *scaleSet) GetIPByNodeName(nodeName, vmSetName string) (string, string, error) {
 	nic, err := ss.GetPrimaryInterface(nodeName, vmSetName)
 	if err != nil {
@@ -259,8 +257,25 @@ func (ss *scaleSet) GetIPByNodeName(nodeName, vmSetName string) (string, string,
 		return "", "", err
 	}
 
-	targetIP := *ipConfig.PrivateIPAddress
-	return targetIP, "", nil
+	internalIP := *ipConfig.PrivateIPAddress
+	publicIP := ""
+	if ipConfig.PublicIPAddress != nil && ipConfig.PublicIPAddress.ID != nil {
+		pipID := *ipConfig.PublicIPAddress.ID
+		pipName, err := getLastSegment(pipID)
+		if err != nil {
+			return "", "", fmt.Errorf("failed to get publicIP name for node %q with pipID %q", nodeName, pipID)
+		}
+
+		pip, existsPip, err := ss.getPublicIPAddress(ss.ResourceGroup, pipName)
+		if err != nil {
+			return "", "", err
+		}
+		if existsPip {
+			publicIP = *pip.IPAddress
+		}
+	}
+
+	return internalIP, publicIP, nil
 }
 
 // This returns the full identifier of the primary NIC for the given VM.
@@ -477,7 +492,7 @@ func (ss *scaleSet) getScaleSetWithRetry(name string) (computepreview.VirtualMac
 			glog.Errorf("backoff: failure for scale set %q, will retry,err=%v", name, retryErr)
 			return false, nil
 		}
-		glog.V(4).Info("backoff: success for scale set %q", name)
+		glog.V(4).Infof("backoff: success for scale set %q", name)
 
 		if cached != nil {
 			exists = true
@@ -629,6 +644,12 @@ func (ss *scaleSet) EnsureHostsInPool(serviceName string, nodes []*v1.Node, back
 		}
 
 		instanceIDs = append(instanceIDs, instanceID)
+	}
+
+	if len(instanceIDs) == 0 {
+		glog.V(3).Infof("scale set %q has 0 nodes, adding it to load balancer anyway", vmSetName)
+		// InstanceIDs is required to update vmss, use * instead here since there are no nodes actually.
+		instanceIDs = []string{"*"}
 	}
 
 	// Update instances to latest VMSS model.
