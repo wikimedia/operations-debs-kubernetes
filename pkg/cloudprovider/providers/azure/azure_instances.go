@@ -80,7 +80,8 @@ func (az *Cloud) NodeAddresses(ctx context.Context, name types.NodeName) ([]v1.N
 		addresses := []v1.NodeAddress{
 			{Type: v1.NodeHostName, Address: string(name)},
 		}
-		for _, address := range ipAddress.IPV4.IPAddress {
+		if len(ipAddress.IPV4.IPAddress) > 0 && len(ipAddress.IPV4.IPAddress[0].PrivateIP) > 0 {
+			address := ipAddress.IPV4.IPAddress[0]
 			addresses = append(addresses, v1.NodeAddress{
 				Type:    v1.NodeInternalIP,
 				Address: address.PrivateIP,
@@ -92,7 +93,8 @@ func (az *Cloud) NodeAddresses(ctx context.Context, name types.NodeName) ([]v1.N
 				})
 			}
 		}
-		for _, address := range ipAddress.IPV6.IPAddress {
+		if len(ipAddress.IPV6.IPAddress) > 0 && len(ipAddress.IPV6.IPAddress[0].PrivateIP) > 0 {
+			address := ipAddress.IPV6.IPAddress[0]
 			addresses = append(addresses, v1.NodeAddress{
 				Type:    v1.NodeInternalIP,
 				Address: address.PrivateIP,
@@ -104,6 +106,13 @@ func (az *Cloud) NodeAddresses(ctx context.Context, name types.NodeName) ([]v1.N
 				})
 			}
 		}
+
+		if len(addresses) == 1 {
+			// No IP addresses is got from instance metadata service, clean up cache and report errors.
+			az.metadata.imsCache.Delete(metadataCacheKey)
+			return nil, fmt.Errorf("get empty IP addresses from instance metadata service")
+		}
+
 		return addresses, nil
 	}
 
@@ -120,11 +129,6 @@ func (az *Cloud) NodeAddressesByProviderID(ctx context.Context, providerID strin
 	}
 
 	return az.NodeAddresses(ctx, name)
-}
-
-// ExternalID returns the cloud provider ID of the specified instance (deprecated).
-func (az *Cloud) ExternalID(ctx context.Context, name types.NodeName) (string, error) {
-	return az.InstanceID(ctx, name)
 }
 
 // InstanceExistsByProviderID returns true if the instance with the given provider id still exists and is running.
@@ -144,6 +148,11 @@ func (az *Cloud) InstanceExistsByProviderID(ctx context.Context, providerID stri
 	}
 
 	return true, nil
+}
+
+// InstanceShutdownByProviderID returns true if the instance is in safe state to detach volumes
+func (az *Cloud) InstanceShutdownByProviderID(ctx context.Context, providerID string) (bool, error) {
+	return false, cloudprovider.NotImplemented
 }
 
 func (az *Cloud) isCurrentInstance(name types.NodeName, metadataVMName string) (bool, error) {
@@ -251,7 +260,7 @@ func (az *Cloud) InstanceType(ctx context.Context, name types.NodeName) (string,
 // AddSSHKeyToAllInstances adds an SSH public key as a legal identity for all instances
 // expected format for the key is standard ssh-keygen format: <protocol> <blob>
 func (az *Cloud) AddSSHKeyToAllInstances(ctx context.Context, user string, keyData []byte) error {
-	return fmt.Errorf("not supported")
+	return cloudprovider.NotImplemented
 }
 
 // CurrentNodeName returns the name of the node we are currently running on.

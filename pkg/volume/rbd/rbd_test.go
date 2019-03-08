@@ -21,6 +21,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -533,6 +534,9 @@ func TestGetDeviceMountPath(t *testing.T) {
 
 // https://github.com/kubernetes/kubernetes/issues/57744
 func TestConstructVolumeSpec(t *testing.T) {
+	if runtime.GOOS == "darwin" {
+		t.Skipf("TestConstructVolumeSpec is not supported on GOOS=%s", runtime.GOOS)
+	}
 	tmpDir, err := utiltesting.MkTmpdir("rbd_test")
 	if err != nil {
 		t.Fatalf("error creating temp dir: %v", err)
@@ -587,6 +591,31 @@ func TestConstructVolumeSpec(t *testing.T) {
 		}
 		if err = fakeMounter.Unmount(c.targetPath); err != nil {
 			t.Fatalf("Unmount device path %s failed: %v", c.targetPath, err)
+		}
+	}
+}
+
+func TestGetRbdImageSize(t *testing.T) {
+	for i, c := range []struct {
+		Output     string
+		TargetSize int
+	}{
+		{
+			Output:     `{"name":"kubernetes-dynamic-pvc-18e7a4d9-050d-11e9-b905-548998f3478f","size":10737418240,"objects":2560,"order":22,"object_size":4194304,"block_name_prefix":"rbd_data.9f4ff7238e1f29","format":2}`,
+			TargetSize: 10240,
+		},
+		{
+			Output:     `{"name":"kubernetes-dynamic-pvc-070635bf-e33f-11e8-aab7-548998f3478f","size":1073741824,"objects":256,"order":22,"object_size":4194304,"block_name_prefix":"rbd_data.670ac4238e1f29","format":2}`,
+			TargetSize: 1024,
+		},
+	} {
+		size, err := getRbdImageSize([]byte(c.Output))
+		if err != nil {
+			t.Errorf("Case %d: getRbdImageSize failed: %v", i, err)
+			continue
+		}
+		if size != c.TargetSize {
+			t.Errorf("Case %d: unexpected size, wanted %d, got %d", i, c.TargetSize, size)
 		}
 	}
 }

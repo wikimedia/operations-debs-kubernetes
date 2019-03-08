@@ -23,10 +23,9 @@ import (
 	"path"
 	"path/filepath"
 	"strings"
-	"syscall"
 
 	"github.com/golang/glog"
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	storage "k8s.io/api/storage/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
@@ -50,6 +49,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	utypes "k8s.io/apimachinery/pkg/types"
 	"k8s.io/kubernetes/pkg/volume/util/types"
+	"k8s.io/kubernetes/pkg/volume/util/volumepathhandler"
 )
 
 const (
@@ -116,8 +116,9 @@ func SetReady(dir string) {
 
 // UnmountPath is a common unmount routine that unmounts the given path and
 // deletes the remaining directory if successful.
+// TODO: Remove this function and change callers to call mount pkg directly
 func UnmountPath(mountPath string, mounter mount.Interface) error {
-	return UnmountMountPoint(mountPath, mounter, false /* extensiveMountPointCheck */)
+	return mount.CleanupMountPoint(mountPath, mounter, false /* extensiveMountPointCheck */)
 }
 
 // UnmountMountPoint is a common unmount routine that unmounts the given path and
@@ -125,93 +126,21 @@ func UnmountPath(mountPath string, mounter mount.Interface) error {
 // if extensiveMountPointCheck is true
 // IsNotMountPoint will be called instead of IsLikelyNotMountPoint.
 // IsNotMountPoint is more expensive but properly handles bind mounts.
+// TODO: Change callers to call mount pkg directly
 func UnmountMountPoint(mountPath string, mounter mount.Interface, extensiveMountPointCheck bool) error {
-	pathExists, pathErr := PathExists(mountPath)
-	if !pathExists {
-		glog.Warningf("Warning: Unmount skipped because path does not exist: %v", mountPath)
-		return nil
-	}
-	corruptedMnt := IsCorruptedMnt(pathErr)
-	if pathErr != nil && !corruptedMnt {
-		return fmt.Errorf("Error checking path: %v", pathErr)
-	}
-	return doUnmountMountPoint(mountPath, mounter, extensiveMountPointCheck, corruptedMnt)
-}
-
-// doUnmountMountPoint is a common unmount routine that unmounts the given path and
-// deletes the remaining directory if successful.
-// if extensiveMountPointCheck is true
-// IsNotMountPoint will be called instead of IsLikelyNotMountPoint.
-// IsNotMountPoint is more expensive but properly handles bind mounts.
-// if corruptedMnt is true, it means that the mountPath is a corrupted mountpoint, Take it as an argument for convenience of testing
-func doUnmountMountPoint(mountPath string, mounter mount.Interface, extensiveMountPointCheck bool, corruptedMnt bool) error {
-	if !corruptedMnt {
-		var notMnt bool
-		var err error
-		if extensiveMountPointCheck {
-			notMnt, err = mount.IsNotMountPoint(mounter, mountPath)
-		} else {
-			notMnt, err = mounter.IsLikelyNotMountPoint(mountPath)
-		}
-
-		if err != nil {
-			return err
-		}
-
-		if notMnt {
-			glog.Warningf("Warning: %q is not a mountpoint, deleting", mountPath)
-			return os.Remove(mountPath)
-		}
-	}
-
-	// Unmount the mount path
-	glog.V(4).Infof("%q is a mountpoint, unmounting", mountPath)
-	if err := mounter.Unmount(mountPath); err != nil {
-		return err
-	}
-	notMnt, mntErr := mounter.IsLikelyNotMountPoint(mountPath)
-	if mntErr != nil {
-		return mntErr
-	}
-	if notMnt {
-		glog.V(4).Infof("%q is unmounted, deleting the directory", mountPath)
-		return os.Remove(mountPath)
-	}
-	return fmt.Errorf("Failed to unmount path %v", mountPath)
+	return mount.CleanupMountPoint(mountPath, mounter, extensiveMountPointCheck)
 }
 
 // PathExists returns true if the specified path exists.
+// TODO: Change callers to call mount pkg directly
 func PathExists(path string) (bool, error) {
-	_, err := os.Stat(path)
-	if err == nil {
-		return true, nil
-	} else if os.IsNotExist(err) {
-		return false, nil
-	} else if IsCorruptedMnt(err) {
-		return true, err
-	} else {
-		return false, err
-	}
+	return mount.PathExists(path)
 }
 
 // IsCorruptedMnt return true if err is about corrupted mount point
+// TODO: Change callers to call mount pkg directly
 func IsCorruptedMnt(err error) bool {
-	if err == nil {
-		return false
-	}
-	var underlyingError error
-	switch pe := err.(type) {
-	case nil:
-		return false
-	case *os.PathError:
-		underlyingError = pe.Err
-	case *os.LinkError:
-		underlyingError = pe.Err
-	case *os.SyscallError:
-		underlyingError = pe.Err
-	}
-
-	return underlyingError == syscall.ENOTCONN || underlyingError == syscall.ESTALE || underlyingError == syscall.EIO
+	return mount.IsCorruptedMnt(err)
 }
 
 // GetSecretForPod locates secret by name in the pod's namespace and returns secret map
@@ -268,37 +197,7 @@ func GetClassForVolume(kubeClient clientset.Interface, pv *v1.PersistentVolume) 
 // CheckNodeAffinity looks at the PV node affinity, and checks if the node has the same corresponding labels
 // This ensures that we don't mount a volume that doesn't belong to this node
 func CheckNodeAffinity(pv *v1.PersistentVolume, nodeLabels map[string]string) error {
-	if err := checkAlphaNodeAffinity(pv, nodeLabels); err != nil {
-		return err
-	}
 	return checkVolumeNodeAffinity(pv, nodeLabels)
-}
-
-func checkAlphaNodeAffinity(pv *v1.PersistentVolume, nodeLabels map[string]string) error {
-	affinity, err := v1helper.GetStorageNodeAffinityFromAnnotation(pv.Annotations)
-	if err != nil {
-		return fmt.Errorf("Error getting storage node affinity: %v", err)
-	}
-	if affinity == nil {
-		return nil
-	}
-
-	if affinity.RequiredDuringSchedulingIgnoredDuringExecution != nil {
-		terms := affinity.RequiredDuringSchedulingIgnoredDuringExecution.NodeSelectorTerms
-		glog.V(10).Infof("Match for RequiredDuringSchedulingIgnoredDuringExecution node selector terms %+v", terms)
-		for _, term := range terms {
-			selector, err := v1helper.NodeSelectorRequirementsAsSelector(term.MatchExpressions)
-			if err != nil {
-				return fmt.Errorf("Failed to parse MatchExpressions: %v", err)
-			}
-			if selector.Matches(labels.Set(nodeLabels)) {
-				// Terms are ORed, so only one needs to match
-				return nil
-			}
-		}
-		return fmt.Errorf("No matching NodeSelectorTerms")
-	}
-	return nil
 }
 
 func checkVolumeNodeAffinity(pv *v1.PersistentVolume, nodeLabels map[string]string) error {
@@ -309,18 +208,11 @@ func checkVolumeNodeAffinity(pv *v1.PersistentVolume, nodeLabels map[string]stri
 	if pv.Spec.NodeAffinity.Required != nil {
 		terms := pv.Spec.NodeAffinity.Required.NodeSelectorTerms
 		glog.V(10).Infof("Match for Required node selector terms %+v", terms)
-		for _, term := range terms {
-			selector, err := v1helper.NodeSelectorRequirementsAsSelector(term.MatchExpressions)
-			if err != nil {
-				return fmt.Errorf("Failed to parse MatchExpressions: %v", err)
-			}
-			if selector.Matches(labels.Set(nodeLabels)) {
-				// Terms are ORed, so only one needs to match
-				return nil
-			}
+		if !v1helper.MatchNodeSelectorTerms(terms, labels.Set(nodeLabels), nil) {
+			return fmt.Errorf("No matching NodeSelectorTerms")
 		}
-		return fmt.Errorf("No matching NodeSelectorTerms")
 	}
+
 	return nil
 }
 
@@ -756,6 +648,12 @@ func CheckVolumeModeFilesystem(volumeSpec *volume.Spec) (bool, error) {
 	return true, nil
 }
 
+// CheckPersistentVolumeClaimModeBlock checks VolumeMode.
+// If the mode is Block, return true otherwise return false.
+func CheckPersistentVolumeClaimModeBlock(pvc *v1.PersistentVolumeClaim) bool {
+	return utilfeature.DefaultFeatureGate.Enabled(features.BlockVolume) && pvc.Spec.VolumeMode != nil && *pvc.Spec.VolumeMode == v1.PersistentVolumeBlock
+}
+
 // MakeAbsolutePath convert path to absolute path according to GOOS
 func MakeAbsolutePath(goos, path string) string {
 	if goos != "windows" {
@@ -772,4 +670,31 @@ func MakeAbsolutePath(goos, path string) string {
 	}
 	// Otherwise, add 'c:\'
 	return "c:\\" + path
+}
+
+// MapBlockVolume is a utility function to provide a common way of mounting
+// block device path for a specified volume and pod.  This function should be
+// called by volume plugins that implements volume.BlockVolumeMapper.Map() method.
+func MapBlockVolume(
+	devicePath,
+	globalMapPath,
+	podVolumeMapPath,
+	volumeMapName string,
+	podUID utypes.UID,
+) error {
+	blkUtil := volumepathhandler.NewBlockVolumePathHandler()
+
+	// map devicePath to global node path
+	mapErr := blkUtil.MapDevice(devicePath, globalMapPath, string(podUID))
+	if mapErr != nil {
+		return mapErr
+	}
+
+	// map devicePath to pod volume path
+	mapErr = blkUtil.MapDevice(devicePath, podVolumeMapPath, volumeMapName)
+	if mapErr != nil {
+		return mapErr
+	}
+
+	return nil
 }

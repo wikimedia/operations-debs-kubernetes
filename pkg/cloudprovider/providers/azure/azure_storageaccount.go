@@ -20,7 +20,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/Azure/azure-sdk-for-go/arm/storage"
+	"github.com/Azure/azure-sdk-for-go/services/storage/mgmt/2017-10-01/storage"
 	"github.com/Azure/go-autorest/autorest/to"
 	"github.com/golang/glog"
 )
@@ -31,7 +31,9 @@ type accountWithLocation struct {
 
 // getStorageAccounts gets name, type, location of all storage accounts in a resource group which matches matchingAccountType, matchingLocation
 func (az *Cloud) getStorageAccounts(matchingAccountType, resourceGroup, matchingLocation string) ([]accountWithLocation, error) {
-	result, err := az.StorageAccountClient.ListByResourceGroup(resourceGroup)
+	ctx, cancel := getContextWithCancel()
+	defer cancel()
+	result, err := az.StorageAccountClient.ListByResourceGroup(ctx, resourceGroup)
 	if err != nil {
 		return nil, err
 	}
@@ -60,7 +62,10 @@ func (az *Cloud) getStorageAccounts(matchingAccountType, resourceGroup, matching
 
 // getStorageAccesskey gets the storage account access key
 func (az *Cloud) getStorageAccesskey(account, resourceGroup string) (string, error) {
-	result, err := az.StorageAccountClient.ListKeys(resourceGroup, account)
+	ctx, cancel := getContextWithCancel()
+	defer cancel()
+
+	result, err := az.StorageAccountClient.ListKeys(ctx, resourceGroup, account)
 	if err != nil {
 		return "", err
 	}
@@ -107,14 +112,16 @@ func (az *Cloud) ensureStorageAccount(accountName, accountType, resourceGroup, l
 			glog.V(2).Infof("azure - no matching account found, begin to create a new account %s in resource group %s, location: %s, accountType: %s",
 				accountName, resourceGroup, location, accountType)
 			cp := storage.AccountCreateParameters{
-				Sku:  &storage.Sku{Name: storage.SkuName(accountType)},
-				Tags: &map[string]*string{"created-by": to.StringPtr("azure")},
+				Sku: &storage.Sku{Name: storage.SkuName(accountType)},
+				// switch to use StorageV2 as it's recommended according to https://docs.microsoft.com/en-us/azure/storage/common/storage-account-options
+				Kind: storage.StorageV2,
 				AccountPropertiesCreateParameters: &storage.AccountPropertiesCreateParameters{EnableHTTPSTrafficOnly: to.BoolPtr(true)},
+				Tags:     map[string]*string{"created-by": to.StringPtr("azure")},
 				Location: &location}
-			cancel := make(chan struct{})
 
-			_, errchan := az.StorageAccountClient.Create(resourceGroup, accountName, cp, cancel)
-			err := <-errchan
+			ctx, cancel := getContextWithCancel()
+			defer cancel()
+			_, err := az.StorageAccountClient.Create(ctx, resourceGroup, accountName, cp)
 			if err != nil {
 				return "", "", fmt.Errorf(fmt.Sprintf("Failed to create storage account %s, error: %s", accountName, err))
 			}

@@ -27,9 +27,11 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/emicklei/go-restful-swagger12"
+	jsonpatch "github.com/evanphx/json-patch"
 	"github.com/go-openapi/spec"
 	"github.com/pborman/uuid"
 
@@ -65,6 +67,7 @@ import (
 	openapicommon "k8s.io/kube-openapi/pkg/common"
 
 	// install apis
+	"github.com/golang/glog"
 	_ "k8s.io/apiserver/pkg/apis/apiserver/install"
 )
 
@@ -138,9 +141,6 @@ type Config struct {
 	// LegacyAPIGroupPrefixes is used to set up URL parsing for authorization and for validating requests
 	// to InstallLegacyAPIGroup. New API servers don't generally have legacy groups at all.
 	LegacyAPIGroupPrefixes sets.String
-	// RequestContextMapper maps requests to contexts. Exported so downstream consumers can provider their own mappers
-	// TODO confirm that anyone downstream actually uses this and doesn't just need an accessor
-	RequestContextMapper apirequest.RequestContextMapper
 	// RequestInfoResolver is used to assign attributes (used by admission and authorization) based on a request URL.
 	// Use-cases that are like kubelets may need to customize this.
 	RequestInfoResolver apirequest.RequestInfoResolver
@@ -161,6 +161,13 @@ type Config struct {
 	// If specified, long running requests such as watch will be allocated a random timeout between this value, and
 	// twice this value.  Note that it is up to the request handlers to ignore or honor this timeout. In seconds.
 	MinRequestTimeout int
+	// The limit on the total size increase all "copy" operations in a json
+	// patch may cause.
+	// This affects all places that applies json patch in the binary.
+	JSONPatchMaxCopyBytes int64
+	// The limit on the request body size that would be accepted and decoded in a write request.
+	// 0 means no limit.
+	MaxRequestBodyBytes int64
 	// MaxRequestsInFlight is the maximum number of parallel non-long-running requests. Every further
 	// request has to wait. Applies only to non-mutating requests.
 	MaxRequestsInFlight int
@@ -251,21 +258,37 @@ type AuthorizationInfo struct {
 // NewConfig returns a Config struct with the default values
 func NewConfig(codecs serializer.CodecFactory) *Config {
 	return &Config{
-		Serializer:                   codecs,
-		ReadWritePort:                443,
-		RequestContextMapper:         apirequest.NewRequestContextMapper(),
-		BuildHandlerChainFunc:        DefaultBuildHandlerChain,
-		HandlerChainWaitGroup:        new(utilwaitgroup.SafeWaitGroup),
-		LegacyAPIGroupPrefixes:       sets.NewString(DefaultLegacyAPIPrefix),
-		DisabledPostStartHooks:       sets.NewString(),
-		HealthzChecks:                []healthz.HealthzChecker{healthz.PingHealthz},
-		EnableIndex:                  true,
-		EnableDiscovery:              true,
-		EnableProfiling:              true,
-		MaxRequestsInFlight:          400,
-		MaxMutatingRequestsInFlight:  200,
-		RequestTimeout:               time.Duration(60) * time.Second,
-		MinRequestTimeout:            1800,
+		Serializer:                  codecs,
+		ReadWritePort:               443,
+		BuildHandlerChainFunc:       DefaultBuildHandlerChain,
+		HandlerChainWaitGroup:       new(utilwaitgroup.SafeWaitGroup),
+		LegacyAPIGroupPrefixes:      sets.NewString(DefaultLegacyAPIPrefix),
+		DisabledPostStartHooks:      sets.NewString(),
+		HealthzChecks:               []healthz.HealthzChecker{healthz.PingHealthz},
+		EnableIndex:                 true,
+		EnableDiscovery:             true,
+		EnableProfiling:             true,
+		EnableMetrics:               true,
+		MaxRequestsInFlight:         400,
+		MaxMutatingRequestsInFlight: 200,
+		RequestTimeout:              time.Duration(60) * time.Second,
+		MinRequestTimeout:           1800,
+		// 10MB is the recommended maximum client request size in bytes
+		// the etcd server should accept. See
+		// https://github.com/etcd-io/etcd/blob/release-3.3/etcdserver/server.go#L90.
+		// A request body might be encoded in json, and is converted to
+		// proto when persisted in etcd. Assuming the upper bound of
+		// the size ratio is 10:1, we set 100MB as the largest size
+		// increase the "copy" operations in a json patch may cause.
+		JSONPatchMaxCopyBytes: int64(100 * 1024 * 1024),
+		// 10MB is the recommended maximum client request size in bytes
+		// the etcd server should accept. See
+		// https://github.com/etcd-io/etcd/blob/release-3.3/etcdserver/server.go#L90.
+		// A request body might be encoded in json, and is converted to
+		// proto when persisted in etcd. Assuming the upper bound of
+		// the size ratio is 10:1, we set 100MB as the largest request
+		// body size to be accepted and decoded in a write request.
+		MaxRequestBodyBytes:          int64(100 * 1024 * 1024),
 		EnableAPIResponseCompression: utilfeature.DefaultFeatureGate.Enabled(features.APIResponseCompression),
 
 		// Default to treating watch as a long-running operation
@@ -281,8 +304,7 @@ func NewRecommendedConfig(codecs serializer.CodecFactory) *RecommendedConfig {
 	}
 }
 
-func DefaultOpenAPIConfig(getDefinitions openapicommon.GetOpenAPIDefinitions, scheme *runtime.Scheme) *openapicommon.Config {
-	defNamer := apiopenapi.NewDefinitionNamer(scheme)
+func DefaultOpenAPIConfig(getDefinitions openapicommon.GetOpenAPIDefinitions, defNamer *apiopenapi.DefinitionNamer) *openapicommon.Config {
 	return &openapicommon.Config{
 		ProtocolList:   []string{"https"},
 		IgnorePrefixes: []string{"/swaggerapi"},
@@ -446,9 +468,8 @@ func (c *RecommendedConfig) Complete() CompletedConfig {
 
 // New creates a new server which logically combines the handling chain with the passed server.
 // name is used to differentiate for logging. The handler chain in particular can be difficult as it starts delgating.
+// delegationTarget may not be nil.
 func (c completedConfig) New(name string, delegationTarget DelegationTarget) (*GenericAPIServer, error) {
-	// The delegationTarget and the config must agree on the RequestContextMapper
-
 	if c.Serializer == nil {
 		return nil, fmt.Errorf("Genericapiserver.New() called with config.Serializer == nil")
 	}
@@ -459,14 +480,13 @@ func (c completedConfig) New(name string, delegationTarget DelegationTarget) (*G
 	handlerChainBuilder := func(handler http.Handler) http.Handler {
 		return c.BuildHandlerChainFunc(handler, c.Config)
 	}
-	apiServerHandler := NewAPIServerHandler(name, c.RequestContextMapper, c.Serializer, handlerChainBuilder, delegationTarget.UnprotectedHandler())
+	apiServerHandler := NewAPIServerHandler(name, c.Serializer, handlerChainBuilder, delegationTarget.UnprotectedHandler())
 
 	s := &GenericAPIServer{
 		discoveryAddresses:     c.DiscoveryAddresses,
 		LoopbackClientConfig:   c.LoopbackClientConfig,
 		legacyAPIGroupPrefixes: c.LegacyAPIGroupPrefixes,
 		admissionControl:       c.AdmissionControl,
-		requestContextMapper:   c.RequestContextMapper,
 		Serializer:             c.Serializer,
 		AuditBackend:           c.AuditBackend,
 		delegationTarget:       delegationTarget,
@@ -491,9 +511,23 @@ func (c completedConfig) New(name string, delegationTarget DelegationTarget) (*G
 
 		healthzChecks: c.HealthzChecks,
 
-		DiscoveryGroupManager: discovery.NewRootAPIsHandler(c.DiscoveryAddresses, c.Serializer, c.RequestContextMapper),
+		DiscoveryGroupManager: discovery.NewRootAPIsHandler(c.DiscoveryAddresses, c.Serializer),
 
 		enableAPIResponseCompression: c.EnableAPIResponseCompression,
+		maxRequestBodyBytes:          c.MaxRequestBodyBytes,
+	}
+
+	for {
+		if c.JSONPatchMaxCopyBytes <= 0 {
+			break
+		}
+		existing := atomic.LoadInt64(&jsonpatch.AccumulatedCopySizeLimit)
+		if existing > 0 && existing < c.JSONPatchMaxCopyBytes {
+			break
+		}
+		if atomic.CompareAndSwapInt64(&jsonpatch.AccumulatedCopySizeLimit, existing, c.JSONPatchMaxCopyBytes) {
+			break
+		}
 	}
 
 	for k, v := range delegationTarget.PostStartHooks() {
@@ -547,24 +581,23 @@ func (c completedConfig) New(name string, delegationTarget DelegationTarget) (*G
 }
 
 func DefaultBuildHandlerChain(apiHandler http.Handler, c *Config) http.Handler {
-	handler := genericapifilters.WithAuthorization(apiHandler, c.RequestContextMapper, c.Authorization.Authorizer, c.Serializer)
-	handler = genericfilters.WithMaxInFlightLimit(handler, c.MaxRequestsInFlight, c.MaxMutatingRequestsInFlight, c.RequestContextMapper, c.LongRunningFunc)
-	handler = genericapifilters.WithImpersonation(handler, c.RequestContextMapper, c.Authorization.Authorizer, c.Serializer)
+	handler := genericapifilters.WithAuthorization(apiHandler, c.Authorization.Authorizer, c.Serializer)
+	handler = genericfilters.WithMaxInFlightLimit(handler, c.MaxRequestsInFlight, c.MaxMutatingRequestsInFlight, c.LongRunningFunc)
+	handler = genericapifilters.WithImpersonation(handler, c.Authorization.Authorizer, c.Serializer)
 	if utilfeature.DefaultFeatureGate.Enabled(features.AdvancedAuditing) {
-		handler = genericapifilters.WithAudit(handler, c.RequestContextMapper, c.AuditBackend, c.AuditPolicyChecker, c.LongRunningFunc)
+		handler = genericapifilters.WithAudit(handler, c.AuditBackend, c.AuditPolicyChecker, c.LongRunningFunc)
 	} else {
-		handler = genericapifilters.WithLegacyAudit(handler, c.RequestContextMapper, c.LegacyAuditWriter)
+		handler = genericapifilters.WithLegacyAudit(handler, c.LegacyAuditWriter)
 	}
-	failedHandler := genericapifilters.Unauthorized(c.RequestContextMapper, c.Serializer, c.Authentication.SupportsBasicAuth)
+	failedHandler := genericapifilters.Unauthorized(c.Serializer, c.Authentication.SupportsBasicAuth)
 	if utilfeature.DefaultFeatureGate.Enabled(features.AdvancedAuditing) {
-		failedHandler = genericapifilters.WithFailedAuthenticationAudit(failedHandler, c.RequestContextMapper, c.AuditBackend, c.AuditPolicyChecker)
+		failedHandler = genericapifilters.WithFailedAuthenticationAudit(failedHandler, c.AuditBackend, c.AuditPolicyChecker)
 	}
-	handler = genericapifilters.WithAuthentication(handler, c.RequestContextMapper, c.Authentication.Authenticator, failedHandler)
+	handler = genericapifilters.WithAuthentication(handler, c.Authentication.Authenticator, failedHandler)
 	handler = genericfilters.WithCORS(handler, c.CorsAllowedOriginList, nil, nil, nil, "true")
-	handler = genericfilters.WithTimeoutForNonLongRunningRequests(handler, c.RequestContextMapper, c.LongRunningFunc, c.RequestTimeout)
-	handler = genericfilters.WithWaitGroup(handler, c.RequestContextMapper, c.LongRunningFunc, c.HandlerChainWaitGroup)
-	handler = genericapifilters.WithRequestInfo(handler, c.RequestInfoResolver, c.RequestContextMapper)
-	handler = apirequest.WithRequestContext(handler, c.RequestContextMapper)
+	handler = genericfilters.WithTimeoutForNonLongRunningRequests(handler, c.LongRunningFunc, c.RequestTimeout)
+	handler = genericfilters.WithWaitGroup(handler, c.LongRunningFunc, c.HandlerChainWaitGroup)
+	handler = genericapifilters.WithRequestInfo(handler, c.RequestInfoResolver)
 	handler = genericfilters.WithPanicRecovery(handler)
 	return handler
 }
@@ -581,6 +614,16 @@ func installAPI(s *GenericAPIServer, c *Config) {
 		if c.EnableContentionProfiling {
 			goruntime.SetBlockProfileRate(1)
 		}
+		// so far, only logging related endpoints are considered valid to add for these debug flags.
+		routes.DebugFlags{}.Install(s.Handler.NonGoRestfulMux, "v", routes.StringFlagPutHandler(
+			routes.StringFlagSetterFunc(func(val string) (string, error) {
+				var level glog.Level
+				if err := level.Set(val); err != nil {
+					return "", fmt.Errorf("failed set glog.logging.verbosity %s: %v", val, err)
+				}
+				return "successfully set glog.logging.verbosity to " + val, nil
+			}),
+		))
 	}
 	if c.EnableMetrics {
 		if c.EnableProfiling {
@@ -589,6 +632,7 @@ func installAPI(s *GenericAPIServer, c *Config) {
 			routes.DefaultMetrics{}.Install(s.Handler.NonGoRestfulMux)
 		}
 	}
+
 	routes.Version{Version: c.Version}.Install(s.Handler.GoRestfulContainer)
 
 	if c.EnableDiscovery {

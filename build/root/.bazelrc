@@ -1,5 +1,8 @@
 startup --expand_configs_in_place
 
+# don't error on error on deprecated native http_archive rule
+build --incompatible_remove_native_http_archive=false
+
 # Show us information about failures.
 build --verbose_failures
 test --test_output=errors
@@ -15,6 +18,7 @@ build --sandbox_tmpfs_path=/tmp
 build --sandbox_fake_username
 
 # Enable go race detection.
+build:unit --features=race
 test:unit --features=race
 test:unit --test_tag_filters=-e2e,-integration
 test:unit --flaky_test_attempts=3

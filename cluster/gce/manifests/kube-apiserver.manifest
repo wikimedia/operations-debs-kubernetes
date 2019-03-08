@@ -5,7 +5,8 @@
   "name":"kube-apiserver",
   "namespace": "kube-system",
   "annotations": {
-    "scheduler.alpha.kubernetes.io/critical-pod": ""
+    "scheduler.alpha.kubernetes.io/critical-pod": "",
+    "seccomp.security.alpha.kubernetes.io/pod": "docker/default"
   },
   "labels": {
     "tier": "control-plane",
@@ -34,9 +35,17 @@
       "httpGet": {
         "host": "127.0.0.1",
         "port": 8080,
-        "path": "/healthz"
+        "path": "/healthz?exclude=etcd"
       },
       "initialDelaySeconds": {{liveness_probe_initial_delay}},
+      "timeoutSeconds": 15
+    },
+    "readinessProbe": {
+      "httpGet": {
+        "host": "127.0.0.1",
+        "port": 8080,
+        "path": "/healthz"
+      },
       "timeoutSeconds": 15
     },
     "ports":[

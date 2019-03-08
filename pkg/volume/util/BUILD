@@ -4,6 +4,7 @@ go_library(
     name = "go_default_library",
     srcs = [
         "atomic_writer.go",
+        "attach_limit.go",
         "device_util.go",
         "doc.go",
         "error.go",
@@ -59,6 +60,7 @@ go_library(
         "//pkg/util/mount:go_default_library",
         "//pkg/volume:go_default_library",
         "//pkg/volume/util/types:go_default_library",
+        "//pkg/volume/util/volumepathhandler:go_default_library",
         "//vendor/github.com/golang/glog:go_default_library",
         "//vendor/github.com/prometheus/client_golang/prometheus:go_default_library",
         "//vendor/k8s.io/api/core/v1:go_default_library",
@@ -91,8 +93,6 @@ go_test(
     embed = [":go_default_library"],
     deps = [
         "//pkg/apis/core/install:go_default_library",
-        "//pkg/apis/core/v1/helper:go_default_library",
-        "//pkg/util/mount:go_default_library",
         "//pkg/util/slice:go_default_library",
         "//pkg/volume:go_default_library",
         "//vendor/k8s.io/api/core/v1:go_default_library",
@@ -100,8 +100,12 @@ go_test(
         "//vendor/k8s.io/apimachinery/pkg/apis/meta/v1:go_default_library",
         "//vendor/k8s.io/apimachinery/pkg/types:go_default_library",
         "//vendor/k8s.io/apimachinery/pkg/util/sets:go_default_library",
-        "//vendor/k8s.io/client-go/util/testing:go_default_library",
-    ],
+    ] + select({
+        "@io_bazel_rules_go//go/platform:linux": [
+            "//vendor/k8s.io/client-go/util/testing:go_default_library",
+        ],
+        "//conditions:default": [],
+    }),
 )
 
 filegroup(

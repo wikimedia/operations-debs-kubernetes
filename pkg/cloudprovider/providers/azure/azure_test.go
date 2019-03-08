@@ -33,8 +33,8 @@ import (
 	"k8s.io/kubernetes/pkg/cloudprovider/providers/azure/auth"
 	kubeletapis "k8s.io/kubernetes/pkg/kubelet/apis"
 
-	"github.com/Azure/azure-sdk-for-go/arm/compute"
-	"github.com/Azure/azure-sdk-for-go/arm/network"
+	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2017-12-01/compute"
+	"github.com/Azure/azure-sdk-for-go/services/network/mgmt/2017-09-01/network"
 	"github.com/Azure/go-autorest/autorest/to"
 	"github.com/stretchr/testify/assert"
 )
@@ -213,9 +213,11 @@ func testLoadBalancerServiceDefaultModeSelection(t *testing.T, isInternal bool) 
 			expectedLBName = testClusterName + "-internal"
 		}
 
-		result, _ := az.LoadBalancerClient.List(az.Config.ResourceGroup)
-		lb := (*result.Value)[0]
-		lbCount := len(*result.Value)
+		ctx, cancel := getContextWithCancel()
+		defer cancel()
+		result, _ := az.LoadBalancerClient.List(ctx, az.Config.ResourceGroup)
+		lb := result[0]
+		lbCount := len(result)
 		expectedNumOfLB := 1
 		if lbCount != expectedNumOfLB {
 			t.Errorf("Unexpected number of LB's: Expected (%d) Found (%d)", expectedNumOfLB, lbCount)
@@ -263,15 +265,17 @@ func testLoadBalancerServiceAutoModeSelection(t *testing.T, isInternal bool) {
 
 		// expected is MIN(index, availabilitySetCount)
 		expectedNumOfLB := int(math.Min(float64(index), float64(availabilitySetCount)))
-		result, _ := az.LoadBalancerClient.List(az.Config.ResourceGroup)
-		lbCount := len(*result.Value)
+		ctx, cancel := getContextWithCancel()
+		defer cancel()
+		result, _ := az.LoadBalancerClient.List(ctx, az.Config.ResourceGroup)
+		lbCount := len(result)
 		if lbCount != expectedNumOfLB {
 			t.Errorf("Unexpected number of LB's: Expected (%d) Found (%d)", expectedNumOfLB, lbCount)
 		}
 
 		maxRules := 0
 		minRules := serviceCount
-		for _, lb := range *result.Value {
+		for _, lb := range result {
 			ruleCount := len(*lb.LoadBalancingRules)
 			if ruleCount < minRules {
 				minRules = ruleCount
@@ -326,8 +330,10 @@ func testLoadBalancerServicesSpecifiedSelection(t *testing.T, isInternal bool) {
 
 		// expected is MIN(index, 2)
 		expectedNumOfLB := int(math.Min(float64(index), float64(2)))
-		result, _ := az.LoadBalancerClient.List(az.Config.ResourceGroup)
-		lbCount := len(*result.Value)
+		ctx, cancel := getContextWithCancel()
+		defer cancel()
+		result, _ := az.LoadBalancerClient.List(ctx, az.Config.ResourceGroup)
+		lbCount := len(result)
 		if lbCount != expectedNumOfLB {
 			t.Errorf("Unexpected number of LB's: Expected (%d) Found (%d)", expectedNumOfLB, lbCount)
 		}
@@ -364,8 +370,10 @@ func testLoadBalancerMaxRulesServices(t *testing.T, isInternal bool) {
 
 		// expected is MIN(index, az.Config.MaximumLoadBalancerRuleCount)
 		expectedNumOfLBRules := int(math.Min(float64(index), float64(az.Config.MaximumLoadBalancerRuleCount)))
-		result, _ := az.LoadBalancerClient.List(az.Config.ResourceGroup)
-		lbCount := len(*result.Value)
+		ctx, cancel := getContextWithCancel()
+		defer cancel()
+		result, _ := az.LoadBalancerClient.List(ctx, az.Config.ResourceGroup)
+		lbCount := len(result)
 		if lbCount != expectedNumOfLBRules {
 			t.Errorf("Unexpected number of LB's: Expected (%d) Found (%d)", expectedNumOfLBRules, lbCount)
 		}
@@ -434,8 +442,10 @@ func testLoadBalancerServiceAutoModeDeleteSelection(t *testing.T, isInternal boo
 
 		// expected is MIN(index, availabilitySetCount)
 		expectedNumOfLB := int(math.Min(float64(index), float64(availabilitySetCount)))
-		result, _ := az.LoadBalancerClient.List(az.Config.ResourceGroup)
-		lbCount := len(*result.Value)
+		ctx, cancel := getContextWithCancel()
+		defer cancel()
+		result, _ := az.LoadBalancerClient.List(ctx, az.Config.ResourceGroup)
+		lbCount := len(result)
 		if lbCount != expectedNumOfLB {
 			t.Errorf("Unexpected number of LB's: Expected (%d) Found (%d)", expectedNumOfLB, lbCount)
 		}
@@ -1044,7 +1054,9 @@ func getClusterResources(az *Cloud, vmCount int, availabilitySetCount int) (clus
 				},
 			},
 		}
-		az.InterfacesClient.CreateOrUpdate(az.Config.ResourceGroup, nicName, newNIC, nil)
+		ctx, cancel := getContextWithCancel()
+		defer cancel()
+		az.InterfacesClient.CreateOrUpdate(ctx, az.Config.ResourceGroup, nicName, newNIC)
 
 		// create vm
 		asID := az.getAvailabilitySetID(asName)
@@ -1065,8 +1077,10 @@ func getClusterResources(az *Cloud, vmCount int, availabilitySetCount int) (clus
 			},
 		}
 
-		_, errChan := az.VirtualMachinesClient.CreateOrUpdate(az.Config.ResourceGroup, vmName, newVM, nil)
-		if err := <-errChan; err != nil {
+		vmCtx, vmCancel := getContextWithCancel()
+		defer vmCancel()
+		_, err := az.VirtualMachinesClient.CreateOrUpdate(vmCtx, az.Config.ResourceGroup, vmName, newVM)
+		if err != nil {
 		}
 		// add to kubernetes
 		newNode := &v1.Node{
@@ -1162,11 +1176,13 @@ func getTestSecurityGroup(az *Cloud, services ...v1.Service) *network.SecurityGr
 		},
 	}
 
+	ctx, cancel := getContextWithCancel()
+	defer cancel()
 	az.SecurityGroupsClient.CreateOrUpdate(
+		ctx,
 		az.ResourceGroup,
 		az.SecurityGroupName,
-		sg,
-		nil)
+		sg)
 
 	return &sg
 }
@@ -1312,12 +1328,12 @@ func validatePublicIP(t *testing.T, publicIP *network.PublicIPAddress, service *
 		t.Errorf("Expected publicIP resource exists, when it is not an internal service")
 	}
 
-	if publicIP.Tags == nil || (*publicIP.Tags)["service"] == nil {
+	if publicIP.Tags == nil || publicIP.Tags["service"] == nil {
 		t.Errorf("Expected publicIP resource has tags[service]")
 	}
 
 	serviceName := getServiceName(service)
-	if serviceName != *(*publicIP.Tags)["service"] {
+	if serviceName != *(publicIP.Tags["service"]) {
 		t.Errorf("Expected publicIP resource has matching tags[service]")
 	}
 	// We cannot use service.Spec.LoadBalancerIP to compare with
@@ -1649,6 +1665,7 @@ func validateEmptyConfig(t *testing.T, config string) {
 		t.Errorf("got incorrect value for CloudProviderRateLimit")
 	}
 }
+
 func TestGetZone(t *testing.T) {
 	cloud := &Cloud{
 		Config: Config{
@@ -1767,13 +1784,15 @@ func addTestSubnet(t *testing.T, az *Cloud, svc *v1.Service) {
 		az.VnetName,
 		subName)
 
-	_, errChan := az.SubnetsClient.CreateOrUpdate(az.VnetResourceGroup, az.VnetName, subName,
+	ctx, cancel := getContextWithCancel()
+	defer cancel()
+	_, err := az.SubnetsClient.CreateOrUpdate(ctx, az.VnetResourceGroup, az.VnetName, subName,
 		network.Subnet{
 			ID:   &subnetID,
 			Name: &subName,
-		}, nil)
+		})
 
-	if err := <-errChan; err != nil {
+	if err != nil {
 		t.Errorf("Subnet cannot be created or update, %v", err)
 	}
 	svc.Annotations[ServiceAnnotationLoadBalancerInternalSubnet] = subName

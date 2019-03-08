@@ -26,27 +26,31 @@ import (
 	"time"
 
 	"k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/client-go/informers"
 	clientset "k8s.io/client-go/kubernetes"
 	restclient "k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/cache"
 	utiltesting "k8s.io/client-go/util/testing"
-	"k8s.io/kubernetes/pkg/api/legacyscheme"
 	apitesting "k8s.io/kubernetes/pkg/api/testing"
 	"k8s.io/kubernetes/pkg/scheduler"
 	"k8s.io/kubernetes/pkg/scheduler/algorithm"
 	schedulerapi "k8s.io/kubernetes/pkg/scheduler/api"
 	latestschedulerapi "k8s.io/kubernetes/pkg/scheduler/api/latest"
+	schedulercache "k8s.io/kubernetes/pkg/scheduler/cache"
 	"k8s.io/kubernetes/pkg/scheduler/core"
-	"k8s.io/kubernetes/pkg/scheduler/schedulercache"
 	schedulertesting "k8s.io/kubernetes/pkg/scheduler/testing"
 	"k8s.io/kubernetes/pkg/scheduler/util"
 )
 
-const enableEquivalenceCache = true
+const (
+	enableEquivalenceCache = true
+	disablePodPreemption   = false
+)
 
 func TestCreate(t *testing.T) {
 	handler := utiltesting.FakeHandler{
@@ -56,7 +60,7 @@ func TestCreate(t *testing.T) {
 	}
 	server := httptest.NewServer(&handler)
 	defer server.Close()
-	client := clientset.NewForConfigOrDie(&restclient.Config{Host: server.URL, ContentConfig: restclient.ContentConfig{GroupVersion: &legacyscheme.Registry.GroupOrDie(v1.GroupName).GroupVersion}})
+	client := clientset.NewForConfigOrDie(&restclient.Config{Host: server.URL, ContentConfig: restclient.ContentConfig{GroupVersion: &schema.GroupVersion{Group: "", Version: "v1"}}})
 	factory := newConfigFactory(client, v1.DefaultHardPodAffinitySymmetricWeight)
 	factory.Create()
 }
@@ -74,7 +78,7 @@ func TestCreateFromConfig(t *testing.T) {
 	}
 	server := httptest.NewServer(&handler)
 	defer server.Close()
-	client := clientset.NewForConfigOrDie(&restclient.Config{Host: server.URL, ContentConfig: restclient.ContentConfig{GroupVersion: &legacyscheme.Registry.GroupOrDie(v1.GroupName).GroupVersion}})
+	client := clientset.NewForConfigOrDie(&restclient.Config{Host: server.URL, ContentConfig: restclient.ContentConfig{GroupVersion: &schema.GroupVersion{Group: "", Version: "v1"}}})
 	factory := newConfigFactory(client, v1.DefaultHardPodAffinitySymmetricWeight)
 
 	// Pre-register some predicate and priority functions
@@ -119,7 +123,7 @@ func TestCreateFromConfigWithHardPodAffinitySymmetricWeight(t *testing.T) {
 	}
 	server := httptest.NewServer(&handler)
 	defer server.Close()
-	client := clientset.NewForConfigOrDie(&restclient.Config{Host: server.URL, ContentConfig: restclient.ContentConfig{GroupVersion: &legacyscheme.Registry.GroupOrDie(v1.GroupName).GroupVersion}})
+	client := clientset.NewForConfigOrDie(&restclient.Config{Host: server.URL, ContentConfig: restclient.ContentConfig{GroupVersion: &schema.GroupVersion{Group: "", Version: "v1"}}})
 	factory := newConfigFactory(client, v1.DefaultHardPodAffinitySymmetricWeight)
 
 	// Pre-register some predicate and priority functions
@@ -165,7 +169,7 @@ func TestCreateFromEmptyConfig(t *testing.T) {
 	}
 	server := httptest.NewServer(&handler)
 	defer server.Close()
-	client := clientset.NewForConfigOrDie(&restclient.Config{Host: server.URL, ContentConfig: restclient.ContentConfig{GroupVersion: &legacyscheme.Registry.GroupOrDie(v1.GroupName).GroupVersion}})
+	client := clientset.NewForConfigOrDie(&restclient.Config{Host: server.URL, ContentConfig: restclient.ContentConfig{GroupVersion: &schema.GroupVersion{Group: "", Version: "v1"}}})
 	factory := newConfigFactory(client, v1.DefaultHardPodAffinitySymmetricWeight)
 
 	configData = []byte(`{}`)
@@ -187,7 +191,7 @@ func TestCreateFromConfigWithUnspecifiedPredicatesOrPriorities(t *testing.T) {
 	}
 	server := httptest.NewServer(&handler)
 	defer server.Close()
-	client := clientset.NewForConfigOrDie(&restclient.Config{Host: server.URL, ContentConfig: restclient.ContentConfig{GroupVersion: &legacyscheme.Registry.GroupOrDie(v1.GroupName).GroupVersion}})
+	client := clientset.NewForConfigOrDie(&restclient.Config{Host: server.URL, ContentConfig: restclient.ContentConfig{GroupVersion: &schema.GroupVersion{Group: "", Version: "v1"}}})
 	factory := newConfigFactory(client, v1.DefaultHardPodAffinitySymmetricWeight)
 
 	RegisterFitPredicate("PredicateOne", PredicateOne)
@@ -227,7 +231,7 @@ func TestCreateFromConfigWithEmptyPredicatesOrPriorities(t *testing.T) {
 	}
 	server := httptest.NewServer(&handler)
 	defer server.Close()
-	client := clientset.NewForConfigOrDie(&restclient.Config{Host: server.URL, ContentConfig: restclient.ContentConfig{GroupVersion: &legacyscheme.Registry.GroupOrDie(v1.GroupName).GroupVersion}})
+	client := clientset.NewForConfigOrDie(&restclient.Config{Host: server.URL, ContentConfig: restclient.ContentConfig{GroupVersion: &schema.GroupVersion{Group: "", Version: "v1"}}})
 	factory := newConfigFactory(client, v1.DefaultHardPodAffinitySymmetricWeight)
 
 	RegisterFitPredicate("PredicateOne", PredicateOne)
@@ -281,16 +285,16 @@ func TestDefaultErrorFunc(t *testing.T) {
 	}
 	handler := utiltesting.FakeHandler{
 		StatusCode:   200,
-		ResponseBody: runtime.EncodeOrDie(util.Test.Codec(), testPod),
+		ResponseBody: runtime.EncodeOrDie(schedulertesting.Test.Codec(), testPod),
 		T:            t,
 	}
 	mux := http.NewServeMux()
 
 	// FakeHandler mustn't be sent requests other than the one you want to test.
-	mux.Handle(util.Test.ResourcePath(string(v1.ResourcePods), "bar", "foo"), &handler)
+	mux.Handle(schedulertesting.Test.ResourcePath(string(v1.ResourcePods), "bar", "foo"), &handler)
 	server := httptest.NewServer(mux)
 	defer server.Close()
-	client := clientset.NewForConfigOrDie(&restclient.Config{Host: server.URL, ContentConfig: restclient.ContentConfig{GroupVersion: &legacyscheme.Registry.GroupOrDie(v1.GroupName).GroupVersion}})
+	client := clientset.NewForConfigOrDie(&restclient.Config{Host: server.URL, ContentConfig: restclient.ContentConfig{GroupVersion: &schema.GroupVersion{Group: "", Version: "v1"}}})
 	factory := newConfigFactory(client, v1.DefaultHardPodAffinitySymmetricWeight)
 	queue := &core.FIFO{FIFO: cache.NewFIFO(cache.MetaNamespaceKeyFunc)}
 	podBackoff := util.CreatePodBackoff(1*time.Millisecond, 1*time.Second)
@@ -306,7 +310,7 @@ func TestDefaultErrorFunc(t *testing.T) {
 		if !exists {
 			continue
 		}
-		handler.ValidateRequest(t, util.Test.ResourcePath(string(v1.ResourcePods), "bar", "foo"), "GET", nil)
+		handler.ValidateRequest(t, schedulertesting.Test.ResourcePath(string(v1.ResourcePods), "bar", "foo"), "GET", nil)
 		if e, a := testPod, got; !reflect.DeepEqual(e, a) {
 			t.Errorf("Expected %v, got %v", e, a)
 		}
@@ -361,16 +365,16 @@ func TestBind(t *testing.T) {
 		}
 		server := httptest.NewServer(&handler)
 		defer server.Close()
-		client := clientset.NewForConfigOrDie(&restclient.Config{Host: server.URL, ContentConfig: restclient.ContentConfig{GroupVersion: &legacyscheme.Registry.GroupOrDie(v1.GroupName).GroupVersion}})
+		client := clientset.NewForConfigOrDie(&restclient.Config{Host: server.URL, ContentConfig: restclient.ContentConfig{GroupVersion: &schema.GroupVersion{Group: "", Version: "v1"}}})
 		b := binder{client}
 
 		if err := b.Bind(item.binding); err != nil {
 			t.Errorf("Unexpected error: %v", err)
 			continue
 		}
-		expectedBody := runtime.EncodeOrDie(util.Test.Codec(), item.binding)
+		expectedBody := runtime.EncodeOrDie(schedulertesting.Test.Codec(), item.binding)
 		handler.ValidateRequest(t,
-			util.Test.SubResourcePath(string(v1.ResourcePods), metav1.NamespaceDefault, "foo", "binding"),
+			schedulertesting.Test.SubResourcePath(string(v1.ResourcePods), metav1.NamespaceDefault, "foo", "binding"),
 			"POST", &expectedBody)
 	}
 }
@@ -383,7 +387,7 @@ func TestInvalidHardPodAffinitySymmetricWeight(t *testing.T) {
 	}
 	server := httptest.NewServer(&handler)
 	defer server.Close()
-	client := clientset.NewForConfigOrDie(&restclient.Config{Host: server.URL, ContentConfig: restclient.ContentConfig{GroupVersion: &legacyscheme.Registry.GroupOrDie(v1.GroupName).GroupVersion}})
+	client := clientset.NewForConfigOrDie(&restclient.Config{Host: server.URL, ContentConfig: restclient.ContentConfig{GroupVersion: &schema.GroupVersion{Group: "", Version: "v1"}}})
 	// factory of "default-scheduler"
 	factory := newConfigFactory(client, -1)
 	_, err := factory.Create()
@@ -400,7 +404,7 @@ func TestInvalidFactoryArgs(t *testing.T) {
 	}
 	server := httptest.NewServer(&handler)
 	defer server.Close()
-	client := clientset.NewForConfigOrDie(&restclient.Config{Host: server.URL, ContentConfig: restclient.ContentConfig{GroupVersion: &legacyscheme.Registry.GroupOrDie(v1.GroupName).GroupVersion}})
+	client := clientset.NewForConfigOrDie(&restclient.Config{Host: server.URL, ContentConfig: restclient.ContentConfig{GroupVersion: &schema.GroupVersion{Group: "", Version: "v1"}}})
 
 	testCases := []struct {
 		hardPodAffinitySymmetricWeight int32
@@ -533,19 +537,44 @@ func newConfigFactory(client *clientset.Clientset, hardPodAffinitySymmetricWeigh
 		informerFactory.Storage().V1().StorageClasses(),
 		hardPodAffinitySymmetricWeight,
 		enableEquivalenceCache,
+		disablePodPreemption,
 	)
 }
 
 type fakeExtender struct {
 	isBinder          bool
 	interestedPodName string
+	ignorable         bool
 }
 
-func (f *fakeExtender) Filter(pod *v1.Pod, nodes []*v1.Node, nodeNameToInfo map[string]*schedulercache.NodeInfo) (filteredNodes []*v1.Node, failedNodesMap schedulerapi.FailedNodesMap, err error) {
+func (f *fakeExtender) IsIgnorable() bool {
+	return f.ignorable
+}
+
+func (f *fakeExtender) ProcessPreemption(
+	pod *v1.Pod,
+	nodeToVictims map[*v1.Node]*schedulerapi.Victims,
+	nodeNameToInfo map[string]*schedulercache.NodeInfo,
+) (map[*v1.Node]*schedulerapi.Victims, error) {
+	return nil, nil
+}
+
+func (f *fakeExtender) SupportsPreemption() bool {
+	return false
+}
+
+func (f *fakeExtender) Filter(
+	pod *v1.Pod,
+	nodes []*v1.Node,
+	nodeNameToInfo map[string]*schedulercache.NodeInfo,
+) (filteredNodes []*v1.Node, failedNodesMap schedulerapi.FailedNodesMap, err error) {
 	return nil, nil, nil
 }
 
-func (f *fakeExtender) Prioritize(pod *v1.Pod, nodes []*v1.Node) (hostPriorities *schedulerapi.HostPriorityList, weight int, err error) {
+func (f *fakeExtender) Prioritize(
+	pod *v1.Pod,
+	nodes []*v1.Node,
+) (hostPriorities *schedulerapi.HostPriorityList, weight int, err error) {
 	return nil, 0, nil
 }
 
@@ -614,6 +643,149 @@ func TestGetBinderFunc(t *testing.T) {
 		binderType := fmt.Sprintf("%s", reflect.TypeOf(binder))
 		if binderType != test.expectedBinderType {
 			t.Errorf("Expected binder %q but got %q", test.expectedBinderType, binderType)
+		}
+	}
+}
+
+func TestNodeAllocatableChanged(t *testing.T) {
+	newQuantity := func(value int64) resource.Quantity {
+		return *resource.NewQuantity(value, resource.BinarySI)
+	}
+	for _, c := range []struct {
+		Name           string
+		Changed        bool
+		OldAllocatable v1.ResourceList
+		NewAllocatable v1.ResourceList
+	}{
+		{
+			Name:           "no allocatable resources changed",
+			Changed:        false,
+			OldAllocatable: v1.ResourceList{v1.ResourceMemory: newQuantity(1024)},
+			NewAllocatable: v1.ResourceList{v1.ResourceMemory: newQuantity(1024)},
+		},
+		{
+			Name:           "new node has more allocatable resources",
+			Changed:        true,
+			OldAllocatable: v1.ResourceList{v1.ResourceMemory: newQuantity(1024)},
+			NewAllocatable: v1.ResourceList{v1.ResourceMemory: newQuantity(1024), v1.ResourceStorage: newQuantity(1024)},
+		},
+	} {
+		oldNode := &v1.Node{Status: v1.NodeStatus{Allocatable: c.OldAllocatable}}
+		newNode := &v1.Node{Status: v1.NodeStatus{Allocatable: c.NewAllocatable}}
+		changed := nodeAllocatableChanged(newNode, oldNode)
+		if changed != c.Changed {
+			t.Errorf("nodeAllocatableChanged should be %t, got %t", c.Changed, changed)
+		}
+	}
+}
+
+func TestNodeLabelsChanged(t *testing.T) {
+	for _, c := range []struct {
+		Name      string
+		Changed   bool
+		OldLabels map[string]string
+		NewLabels map[string]string
+	}{
+		{
+			Name:      "no labels changed",
+			Changed:   false,
+			OldLabels: map[string]string{"foo": "bar"},
+			NewLabels: map[string]string{"foo": "bar"},
+		},
+		// Labels changed.
+		{
+			Name:      "new node has more labels",
+			Changed:   true,
+			OldLabels: map[string]string{"foo": "bar"},
+			NewLabels: map[string]string{"foo": "bar", "test": "value"},
+		},
+	} {
+		oldNode := &v1.Node{ObjectMeta: metav1.ObjectMeta{Labels: c.OldLabels}}
+		newNode := &v1.Node{ObjectMeta: metav1.ObjectMeta{Labels: c.NewLabels}}
+		changed := nodeLabelsChanged(newNode, oldNode)
+		if changed != c.Changed {
+			t.Errorf("Test case %q failed: should be %t, got %t", c.Name, c.Changed, changed)
+		}
+	}
+}
+
+func TestNodeTaintsChanged(t *testing.T) {
+	for _, c := range []struct {
+		Name      string
+		Changed   bool
+		OldTaints []v1.Taint
+		NewTaints []v1.Taint
+	}{
+		{
+			Name:      "no taint changed",
+			Changed:   false,
+			OldTaints: []v1.Taint{{Key: "key", Value: "value"}},
+			NewTaints: []v1.Taint{{Key: "key", Value: "value"}},
+		},
+		{
+			Name:      "taint value changed",
+			Changed:   true,
+			OldTaints: []v1.Taint{{Key: "key", Value: "value1"}},
+			NewTaints: []v1.Taint{{Key: "key", Value: "value2"}},
+		},
+	} {
+		oldNode := &v1.Node{Spec: v1.NodeSpec{Taints: c.OldTaints}}
+		newNode := &v1.Node{Spec: v1.NodeSpec{Taints: c.NewTaints}}
+		changed := nodeTaintsChanged(newNode, oldNode)
+		if changed != c.Changed {
+			t.Errorf("Test case %q failed: should be %t, not %t", c.Name, c.Changed, changed)
+		}
+	}
+}
+
+func TestNodeConditionsChanged(t *testing.T) {
+	nodeConditionType := reflect.TypeOf(v1.NodeCondition{})
+	if nodeConditionType.NumField() != 6 {
+		t.Errorf("NodeCondition type has changed. The nodeConditionsChanged() function must be reevaluated.")
+	}
+
+	for _, c := range []struct {
+		Name          string
+		Changed       bool
+		OldConditions []v1.NodeCondition
+		NewConditions []v1.NodeCondition
+	}{
+		{
+			Name:          "no condition changed",
+			Changed:       false,
+			OldConditions: []v1.NodeCondition{{Type: v1.NodeOutOfDisk, Status: v1.ConditionTrue}},
+			NewConditions: []v1.NodeCondition{{Type: v1.NodeOutOfDisk, Status: v1.ConditionTrue}},
+		},
+		{
+			Name:          "only LastHeartbeatTime changed",
+			Changed:       false,
+			OldConditions: []v1.NodeCondition{{Type: v1.NodeOutOfDisk, Status: v1.ConditionTrue, LastHeartbeatTime: metav1.Unix(1, 0)}},
+			NewConditions: []v1.NodeCondition{{Type: v1.NodeOutOfDisk, Status: v1.ConditionTrue, LastHeartbeatTime: metav1.Unix(2, 0)}},
+		},
+		{
+			Name:          "new node has more healthy conditions",
+			Changed:       true,
+			OldConditions: []v1.NodeCondition{},
+			NewConditions: []v1.NodeCondition{{Type: v1.NodeReady, Status: v1.ConditionTrue}},
+		},
+		{
+			Name:          "new node has less unhealthy conditions",
+			Changed:       true,
+			OldConditions: []v1.NodeCondition{{Type: v1.NodeOutOfDisk, Status: v1.ConditionTrue}},
+			NewConditions: []v1.NodeCondition{},
+		},
+		{
+			Name:          "condition status changed",
+			Changed:       true,
+			OldConditions: []v1.NodeCondition{{Type: v1.NodeReady, Status: v1.ConditionFalse}},
+			NewConditions: []v1.NodeCondition{{Type: v1.NodeReady, Status: v1.ConditionTrue}},
+		},
+	} {
+		oldNode := &v1.Node{Status: v1.NodeStatus{Conditions: c.OldConditions}}
+		newNode := &v1.Node{Status: v1.NodeStatus{Conditions: c.NewConditions}}
+		changed := nodeConditionsChanged(newNode, oldNode)
+		if changed != c.Changed {
+			t.Errorf("Test case %q failed: should be %t, got %t", c.Name, c.Changed, changed)
 		}
 	}
 }

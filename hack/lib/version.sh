@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 # Copyright 2014 The Kubernetes Authors.
 #
@@ -40,12 +40,12 @@ kube::version::get_version_vars() {
   # If the kubernetes source was exported through git archive, then
   # we likely don't have a git tree, but these magic values may be filled in.
   if [[ '%' == "%" ]]; then
-    KUBE_GIT_COMMIT='637c7e288581ee40ab4ca210618a89a555b6e7e9'
+    KUBE_GIT_COMMIT='4e209c9383fa00631d124c8adcc011d617339b3c'
     KUBE_GIT_TREE_STATE="archive"
-    # When a 'git archive' is exported, the 'tag: v1.10.11' below will look
+    # When a 'git archive' is exported, the 'HEAD, tag: v1.11.8, origin/release-1.11' below will look
     # something like 'HEAD -> release-1.8, tag: v1.8.3' where then 'tag: '
     # can be extracted from it.
-    if [[ 'tag: v1.10.11' =~ tag:\ (v[^ ,]+) ]]; then
+    if [[ 'HEAD, tag: v1.11.8, origin/release-1.11' =~ tag:\ (v[^ ,]+) ]]; then
      KUBE_GIT_VERSION="${BASH_REMATCH[1]}"
     fi
   fi
@@ -99,7 +99,7 @@ kube::version::get_version_vars() {
 
       # If KUBE_GIT_VERSION is not a valid Semantic Version, then refuse to build.
       if ! [[ "${KUBE_GIT_VERSION}" =~ ^v([0-9]+)\.([0-9]+)(\.[0-9]+)?(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$ ]]; then
-          echo "KUBE_GIT_VERSION should be a valid Semantic Version"
+          echo "KUBE_GIT_VERSION should be a valid Semantic Version. Current value: ${KUBE_GIT_VERSION}"
           echo "Please see more details here: https://semver.org"
           exit 1
       fi

@@ -49,9 +49,6 @@ import (
 )
 
 const (
-	// maxImagesInNodeStatus is the number of max images we store in image status.
-	maxImagesInNodeStatus = 50
-
 	// maxNamesPerImageInNodeStatus is max number of names per image stored in
 	// the node status.
 	maxNamesPerImageInNodeStatus = 5
@@ -66,8 +63,6 @@ func (kl *Kubelet) registerWithAPIServer() {
 	}
 	step := 100 * time.Millisecond
 
-	var previousNode *v1.Node = nil
-	var registered bool
 	for {
 		time.Sleep(step)
 		step = step * 2
@@ -80,18 +75,9 @@ func (kl *Kubelet) registerWithAPIServer() {
 			glog.Errorf("Unable to construct v1.Node object for kubelet: %v", err)
 			continue
 		}
-		if previousNode != nil {
-			for k := range previousNode.Status.Capacity {
-				if v1helper.IsExtendedResourceName(k) {
-					glog.Infof("Zero out resource %s capacity in new node.", k)
-					node.Status.Capacity[k] = *resource.NewQuantity(int64(0), resource.DecimalSI)
-					node.Status.Allocatable[k] = *resource.NewQuantity(int64(0), resource.DecimalSI)
-				}
-			}
-		}
 
 		glog.Infof("Attempting to register node %s", node.Name)
-		registered, previousNode = kl.tryRegisterWithAPIServer(node)
+		registered := kl.tryRegisterWithAPIServer(node)
 		if registered {
 			glog.Infof("Successfully registered node %s", node.Name)
 			kl.registrationCompleted = true
@@ -107,63 +93,49 @@ func (kl *Kubelet) registerWithAPIServer() {
 // persistent volumes for the node.  If a node of the same name exists but has
 // a different externalID value, it attempts to delete that node so that a
 // later attempt can recreate it.
-func (kl *Kubelet) tryRegisterWithAPIServer(node *v1.Node) (bool, *v1.Node) {
+func (kl *Kubelet) tryRegisterWithAPIServer(node *v1.Node) bool {
 	_, err := kl.kubeClient.CoreV1().Nodes().Create(node)
 	if err == nil {
-		return true, nil
+		return true
 	}
 
 	if !apierrors.IsAlreadyExists(err) {
 		glog.Errorf("Unable to register node %q with API server: %v", kl.nodeName, err)
-		return false, nil
+		return false
 	}
 
 	existingNode, err := kl.kubeClient.CoreV1().Nodes().Get(string(kl.nodeName), metav1.GetOptions{})
 	if err != nil {
 		glog.Errorf("Unable to register node %q with API server: error getting existing node: %v", kl.nodeName, err)
-		return false, nil
+		return false
 	}
 	if existingNode == nil {
 		glog.Errorf("Unable to register node %q with API server: no node instance returned", kl.nodeName)
-		return false, nil
+		return false
 	}
 
 	originalNode := existingNode.DeepCopy()
 	if originalNode == nil {
 		glog.Errorf("Nil %q node object", kl.nodeName)
-		return false, nil
+		return false
 	}
 
-	exported_extended_resource := kl.reconcileExtendedResource(node, existingNode)
+	glog.Infof("Node %s was previously registered", kl.nodeName)
 
-	if existingNode.Spec.ExternalID == node.Spec.ExternalID {
-		glog.Infof("Node %s was previously registered", kl.nodeName)
-		// Edge case: the node was previously registered; reconcile
-		// the value of the controller-managed attach-detach
-		// annotation.
-		requiresUpdate := kl.reconcileCMADAnnotationWithExistingNode(node, existingNode)
-		requiresUpdate = kl.updateDefaultLabels(node, existingNode) || requiresUpdate
-		requiresUpdate = exported_extended_resource || requiresUpdate
-		if requiresUpdate {
-			if _, _, err := nodeutil.PatchNodeStatus(kl.kubeClient.CoreV1(), types.NodeName(kl.nodeName), originalNode, existingNode); err != nil {
-				glog.Errorf("Unable to reconcile node %q with API server: error updating node: %v", kl.nodeName, err)
-				return false, nil
-			}
+	// Edge case: the node was previously registered; reconcile
+	// the value of the controller-managed attach-detach
+	// annotation.
+	requiresUpdate := kl.reconcileCMADAnnotationWithExistingNode(node, existingNode)
+	requiresUpdate = kl.updateDefaultLabels(node, existingNode) || requiresUpdate
+	requiresUpdate = kl.reconcileExtendedResource(node, existingNode) || requiresUpdate
+	if requiresUpdate {
+		if _, _, err := nodeutil.PatchNodeStatus(kl.kubeClient.CoreV1(), types.NodeName(kl.nodeName), originalNode, existingNode); err != nil {
+			glog.Errorf("Unable to reconcile node %q with API server: error updating node: %v", kl.nodeName, err)
+			return false
 		}
-
-		return true, nil
 	}
 
-	glog.Errorf("Previously node %q had externalID %q; now it is %q; will delete and recreate.",
-		kl.nodeName, node.Spec.ExternalID, existingNode.Spec.ExternalID,
-	)
-	if err := kl.kubeClient.CoreV1().Nodes().Delete(node.Name, nil); err != nil {
-		glog.Errorf("Unable to register node %q with API server: error deleting old node: %v", kl.nodeName, err)
-	} else {
-		glog.Infof("Deleted old node object %q", kl.nodeName)
-	}
-
-	return false, existingNode
+	return true
 }
 
 // Zeros out extended resource capacity during reconciliation.
@@ -171,7 +143,6 @@ func (kl *Kubelet) reconcileExtendedResource(initialNode, node *v1.Node) bool {
 	requiresUpdate := false
 	for k := range node.Status.Capacity {
 		if v1helper.IsExtendedResourceName(k) {
-			glog.Infof("Zero out resource %s capacity in existing node.", k)
 			node.Status.Capacity[k] = *resource.NewQuantity(int64(0), resource.DecimalSI)
 			node.Status.Allocatable[k] = *resource.NewQuantity(int64(0), resource.DecimalSI)
 			requiresUpdate = true
@@ -327,18 +298,10 @@ func (kl *Kubelet) initialNode() (*v1.Node, error) {
 			return nil, fmt.Errorf("failed to get instances from cloud provider")
 		}
 
-		// TODO(roberthbailey): Can we do this without having credentials to talk
-		// to the cloud provider?
-		// TODO: ExternalID is deprecated, we'll have to drop this code
-		externalID, err := instances.ExternalID(context.TODO(), kl.nodeName)
-		if err != nil {
-			return nil, fmt.Errorf("failed to get external ID from cloud provider: %v", err)
-		}
-		node.Spec.ExternalID = externalID
-
 		// TODO: We can't assume that the node has credentials to talk to the
 		// cloudprovider from arbitrary nodes. At most, we should talk to a
 		// local metadata server here.
+		var err error
 		if node.Spec.ProviderID == "" {
 			node.Spec.ProviderID, err = cloudprovider.GetInstanceProviderID(context.TODO(), kl.cloud, kl.nodeName)
 			if err != nil {
@@ -370,12 +333,35 @@ func (kl *Kubelet) initialNode() (*v1.Node, error) {
 				node.ObjectMeta.Labels[kubeletapis.LabelZoneRegion] = zone.Region
 			}
 		}
-	} else {
-		node.Spec.ExternalID = kl.hostname
 	}
+
 	kl.setNodeStatus(node)
 
 	return node, nil
+}
+
+// setVolumeLimits updates volume limits on the node
+func (kl *Kubelet) setVolumeLimits(node *v1.Node) {
+	if node.Status.Capacity == nil {
+		node.Status.Capacity = v1.ResourceList{}
+	}
+
+	if node.Status.Allocatable == nil {
+		node.Status.Allocatable = v1.ResourceList{}
+	}
+
+	pluginWithLimits := kl.volumePluginMgr.ListVolumePluginWithLimits()
+	for _, volumePlugin := range pluginWithLimits {
+		attachLimits, err := volumePlugin.GetVolumeLimits()
+		if err != nil {
+			glog.V(4).Infof("Error getting volume limit for plugin %s", volumePlugin.GetPluginName())
+			continue
+		}
+		for limitKey, value := range attachLimits {
+			node.Status.Capacity[v1.ResourceName(limitKey)] = *resource.NewQuantity(value, resource.DecimalSI)
+			node.Status.Allocatable[v1.ResourceName(limitKey)] = *resource.NewQuantity(value, resource.DecimalSI)
+		}
+	}
 }
 
 // syncNodeStatus should be called periodically from a goroutine.
@@ -396,6 +382,7 @@ func (kl *Kubelet) syncNodeStatus() {
 
 // updateNodeStatus updates node status to master with retries.
 func (kl *Kubelet) updateNodeStatus() error {
+	glog.V(5).Infof("Updating node status")
 	for i := 0; i < nodeStatusUpdateRetry; i++ {
 		if err := kl.tryUpdateNodeStatus(i); err != nil {
 			if i > 0 && kl.onRepeatedHeartbeatFailure != nil {
@@ -432,7 +419,9 @@ func (kl *Kubelet) tryUpdateNodeStatus(tryNumber int) error {
 		return fmt.Errorf("nil %q node object", kl.nodeName)
 	}
 
-	kl.updatePodCIDR(node.Spec.PodCIDR)
+	if node.Spec.PodCIDR != "" {
+		kl.updatePodCIDR(node.Spec.PodCIDR)
+	}
 
 	kl.setNodeStatus(node)
 	// Patch the current status on the API server
@@ -475,18 +464,11 @@ func (kl *Kubelet) setNodeAddress(node *v1.Node) error {
 		return nil
 	}
 	if kl.cloud != nil {
-		instances, ok := kl.cloud.Instances()
-		if !ok {
-			return fmt.Errorf("failed to get instances from cloud provider")
-		}
-		// TODO(roberthbailey): Can we do this without having credentials to talk
-		// to the cloud provider?
-		// TODO(justinsb): We can if CurrentNodeName() was actually CurrentNode() and returned an interface
-		// TODO: If IP addresses couldn't be fetched from the cloud provider, should kubelet fallback on the other methods for getting the IP below?
-		nodeAddresses, err := instances.NodeAddresses(context.TODO(), kl.nodeName)
+		nodeAddresses, err := kl.cloudResourceSyncManager.NodeAddresses()
 		if err != nil {
-			return fmt.Errorf("failed to get node address from cloud provider: %v", err)
+			return err
 		}
+
 		if kl.nodeIP != nil {
 			enforcedNodeAddresses := []v1.NodeAddress{}
 
@@ -580,14 +562,6 @@ func (kl *Kubelet) setNodeStatusMachineInfo(node *v1.Node) {
 		node.Status.Capacity = v1.ResourceList{}
 	}
 
-	// populate GPU capacity.
-	gpuCapacity := kl.gpuManager.Capacity()
-	if gpuCapacity != nil {
-		for k, v := range gpuCapacity {
-			node.Status.Capacity[k] = v
-		}
-	}
-
 	var devicePluginAllocatable v1.ResourceList
 	var devicePluginCapacity v1.ResourceList
 	var removedDevicePlugins []string
@@ -639,7 +613,9 @@ func (kl *Kubelet) setNodeStatusMachineInfo(node *v1.Node) {
 		devicePluginCapacity, devicePluginAllocatable, removedDevicePlugins = kl.containerManager.GetDevicePluginResourceCapacity()
 		if devicePluginCapacity != nil {
 			for k, v := range devicePluginCapacity {
-				glog.V(2).Infof("Update capacity for %s to %d", k, v.Value())
+				if old, ok := node.Status.Capacity[k]; !ok || old.Value() != v.Value() {
+					glog.V(2).Infof("Update capacity for %s to %d", k, v.Value())
+				}
 				node.Status.Capacity[k] = v
 			}
 		}
@@ -682,9 +658,12 @@ func (kl *Kubelet) setNodeStatusMachineInfo(node *v1.Node) {
 		}
 		node.Status.Allocatable[k] = value
 	}
+
 	if devicePluginAllocatable != nil {
 		for k, v := range devicePluginAllocatable {
-			glog.V(2).Infof("Update allocatable for %s to %d", k, v.Value())
+			if old, ok := node.Status.Allocatable[k]; !ok || old.Value() != v.Value() {
+				glog.V(2).Infof("Update allocatable for %s to %d", k, v.Value())
+			}
 			node.Status.Allocatable[k] = v
 		}
 	}
@@ -741,8 +720,9 @@ func (kl *Kubelet) setNodeStatusImages(node *v1.Node) {
 		return
 	}
 	// sort the images from max to min, and only set top N images into the node status.
-	if maxImagesInNodeStatus < len(containerImages) {
-		containerImages = containerImages[0:maxImagesInNodeStatus]
+	if int(kl.nodeStatusMaxImages) > -1 &&
+		int(kl.nodeStatusMaxImages) < len(containerImages) {
+		containerImages = containerImages[0:kl.nodeStatusMaxImages]
 	}
 
 	for _, image := range containerImages {
@@ -773,6 +753,9 @@ func (kl *Kubelet) setNodeStatusInfo(node *v1.Node) {
 	kl.setNodeStatusDaemonEndpoints(node)
 	kl.setNodeStatusImages(node)
 	kl.setNodeStatusGoRuntime(node)
+	if utilfeature.DefaultFeatureGate.Enabled(features.AttachVolumeLimit) {
+		kl.setVolumeLimits(node)
+	}
 }
 
 // Set Ready condition for the node.
@@ -1089,7 +1072,8 @@ func (kl *Kubelet) setNodeVolumesInUseStatus(node *v1.Node) {
 // TODO(madhusudancs): Simplify the logic for setting node conditions and
 // refactor the node status condition code out to a different file.
 func (kl *Kubelet) setNodeStatus(node *v1.Node) {
-	for _, f := range kl.setNodeStatusFuncs {
+	for i, f := range kl.setNodeStatusFuncs {
+		glog.V(5).Infof("Setting node status at position %v", i)
 		if err := f(node); err != nil {
 			glog.Warningf("Failed to set some node status fields: %s", err)
 		}

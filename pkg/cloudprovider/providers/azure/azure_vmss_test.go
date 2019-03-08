@@ -20,8 +20,8 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/Azure/azure-sdk-for-go/arm/network"
-	computepreview "github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2017-12-01/compute"
+	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2017-12-01/compute"
+	"github.com/Azure/azure-sdk-for-go/services/network/mgmt/2017-09-01/network"
 	"github.com/Azure/go-autorest/autorest/to"
 	"github.com/stretchr/testify/assert"
 )
@@ -47,8 +47,10 @@ func setTestVirtualMachineCloud(ss *Cloud, scaleSetName string, vmList []string)
 	virtualMachineScaleSetVMsClient := newFakeVirtualMachineScaleSetVMsClient()
 	publicIPAddressesClient := newFakeAzurePIPClient("rg")
 	interfaceClient := newFakeAzureInterfacesClient()
-	scaleSets := make(map[string]map[string]computepreview.VirtualMachineScaleSet)
-	scaleSets["rg"] = map[string]computepreview.VirtualMachineScaleSet{
+
+	// set test scale sets.
+	scaleSets := make(map[string]map[string]compute.VirtualMachineScaleSet)
+	scaleSets["rg"] = map[string]compute.VirtualMachineScaleSet{
 		scaleSetName: {
 			Name: &scaleSetName,
 		},
@@ -61,8 +63,8 @@ func setTestVirtualMachineCloud(ss *Cloud, scaleSetName string, vmList []string)
 	testPIPs := map[string]map[string]network.PublicIPAddress{
 		"rg": make(map[string]network.PublicIPAddress),
 	}
-	ssVMs := map[string]map[string]computepreview.VirtualMachineScaleSetVM{
-		"rg": make(map[string]computepreview.VirtualMachineScaleSetVM),
+	ssVMs := map[string]map[string]compute.VirtualMachineScaleSetVM{
+		"rg": make(map[string]compute.VirtualMachineScaleSetVM),
 	}
 	for i := range vmList {
 		nodeName := vmList[i]
@@ -73,17 +75,17 @@ func setTestVirtualMachineCloud(ss *Cloud, scaleSetName string, vmList []string)
 		vmName := fmt.Sprintf("%s_%s", scaleSetName, instanceID)
 
 		// set vmss virtual machine.
-		networkInterfaces := []computepreview.NetworkInterfaceReference{
+		networkInterfaces := []compute.NetworkInterfaceReference{
 			{
 				ID: &interfaceID,
 			},
 		}
-		ssVMs["rg"][vmName] = computepreview.VirtualMachineScaleSetVM{
-			VirtualMachineScaleSetVMProperties: &computepreview.VirtualMachineScaleSetVMProperties{
-				OsProfile: &computepreview.OSProfile{
+		ssVMs["rg"][vmName] = compute.VirtualMachineScaleSetVM{
+			VirtualMachineScaleSetVMProperties: &compute.VirtualMachineScaleSetVMProperties{
+				OsProfile: &compute.OSProfile{
 					ComputerName: &nodeName,
 				},
-				NetworkProfile: &computepreview.NetworkProfile{
+				NetworkProfile: &compute.NetworkProfile{
 					NetworkInterfaces: &networkInterfaces,
 				},
 			},
@@ -92,6 +94,7 @@ func setTestVirtualMachineCloud(ss *Cloud, scaleSetName string, vmList []string)
 			Name:       &vmName,
 			Location:   &ss.Location,
 		}
+
 		// set interfaces.
 		testInterfaces["rg"][nodeName] = network.Interface{
 			ID: &interfaceID,
@@ -109,6 +112,7 @@ func setTestVirtualMachineCloud(ss *Cloud, scaleSetName string, vmList []string)
 				},
 			},
 		}
+
 		// set public IPs.
 		testPIPs["rg"][nodeName] = network.PublicIPAddress{
 			ID: to.StringPtr(publicAddressID),
@@ -227,14 +231,17 @@ func TestGetIPByNodeName(t *testing.T) {
 			expectError: true,
 		},
 	}
+
 	for _, test := range testCases {
 		ss, err := newTestScaleSet(test.scaleSet, test.vmList)
 		assert.NoError(t, err, test.description)
-		privateIP, publicIP, err := ss.GetIPByNodeName(test.nodeName, test.scaleSet)
+
+		privateIP, publicIP, err := ss.GetIPByNodeName(test.nodeName)
 		if test.expectError {
 			assert.Error(t, err, test.description)
 			continue
 		}
+
 		assert.NoError(t, err, test.description)
 		assert.Equal(t, test.expected, []string{privateIP, publicIP}, test.description)
 	}
