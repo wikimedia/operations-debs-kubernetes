@@ -24,24 +24,32 @@ import (
 	"strings"
 	"time"
 
+	"encoding/json"
+
 	appsv1 "k8s.io/api/apps/v1"
 	"k8s.io/api/core/v1"
 	storage "k8s.io/api/storage/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/sets"
+	"k8s.io/apimachinery/pkg/util/strategicpatch"
+	"k8s.io/apimachinery/pkg/util/wait"
 	clientset "k8s.io/client-go/kubernetes"
 	podutil "k8s.io/kubernetes/pkg/api/v1/pod"
 	"k8s.io/kubernetes/pkg/kubelet/apis"
+	kubeletapis "k8s.io/kubernetes/pkg/kubelet/apis"
 	"k8s.io/kubernetes/pkg/volume/util"
 	"k8s.io/kubernetes/test/e2e/framework"
 	"k8s.io/kubernetes/test/e2e/storage/utils"
+	imageutils "k8s.io/kubernetes/test/utils/image"
 )
 
 const (
 	pvDeletionTimeout       = 3 * time.Minute
 	statefulSetReadyTimeout = 3 * time.Minute
+	taintKeyPrefix          = "zoneTaint_"
 )
 
 var _ = utils.SIGDescribe("Regional PD", func() {
@@ -64,10 +72,21 @@ var _ = utils.SIGDescribe("Regional PD", func() {
 			testVolumeProvisioning(c, ns)
 		})
 
+		It("should provision storage with delayed binding [Slow]", func() {
+			testRegionalDelayedBinding(c, ns)
+		})
+
+		It("should provision storage in the allowedTopologies [Slow]", func() {
+			testRegionalAllowedTopologies(c, ns)
+		})
+
+		It("should provision storage in the allowedTopologies with delayed binding [Slow]", func() {
+			testRegionalAllowedTopologiesWithDelayedBinding(c, ns)
+		})
+
 		It("should failover to a different zone when all nodes in one zone become unreachable [Slow] [Disruptive]", func() {
 			testZonalFailover(c, ns)
 		})
-
 	})
 })
 
@@ -129,9 +148,6 @@ func testVolumeProvisioning(c clientset.Interface, ns string) {
 }
 
 func testZonalFailover(c clientset.Interface, ns string) {
-	nodes := framework.GetReadySchedulableNodesOrDie(c)
-	nodeCount := len(nodes.Items)
-
 	cloudZones := getTwoRandomZones(c)
 	class := newRegionalStorageClass(ns, cloudZones)
 	claimTemplate := newClaimTemplate(ns)
@@ -188,41 +204,40 @@ func testZonalFailover(c clientset.Interface, ns string) {
 	Expect(err).ToNot(HaveOccurred())
 	podZone := node.Labels[apis.LabelZoneFailureDomain]
 
-	// TODO (verult) Consider using node taints to simulate zonal failure instead.
-	By("deleting instance group belonging to pod's zone")
-
-	// Asynchronously detect a pod reschedule is triggered during/after instance group deletion.
-	waitStatus := make(chan error)
-	go func() {
-		waitStatus <- waitForStatefulSetReplicasNotReady(statefulSet.Name, ns, c)
-	}()
-
-	cloud, err := framework.GetGCECloud()
-	if err != nil {
-		Expect(err).NotTo(HaveOccurred())
-	}
-	instanceGroupName := framework.TestContext.CloudConfig.NodeInstanceGroup
-	instanceGroup, err := cloud.GetInstanceGroup(instanceGroupName, podZone)
-	Expect(err).NotTo(HaveOccurred(),
-		"Error getting instance group %s in zone %s", instanceGroupName, podZone)
-	templateName, err := framework.GetManagedInstanceGroupTemplateName(podZone)
-	Expect(err).NotTo(HaveOccurred(),
-		"Error getting instance group template in zone %s", podZone)
-	err = framework.DeleteManagedInstanceGroup(podZone)
-	Expect(err).NotTo(HaveOccurred(),
-		"Error deleting instance group in zone %s", podZone)
+	By("tainting nodes in the zone the pod is scheduled in")
+	selector := labels.SelectorFromSet(labels.Set(map[string]string{apis.LabelZoneFailureDomain: podZone}))
+	nodesInZone, err := c.CoreV1().Nodes().List(metav1.ListOptions{LabelSelector: selector.String()})
+	Expect(err).ToNot(HaveOccurred())
+	removeTaintFunc := addTaint(c, ns, nodesInZone.Items, podZone)
 
 	defer func() {
-		framework.Logf("recreating instance group %s", instanceGroup.Name)
-
-		framework.ExpectNoError(framework.CreateManagedInstanceGroup(instanceGroup.Size, podZone, templateName),
-			"Error recreating instance group %s in zone %s", instanceGroup.Name, podZone)
-		framework.ExpectNoError(framework.WaitForReadyNodes(c, nodeCount, framework.RestartNodeReadyAgainTimeout),
-			"Error waiting for nodes from the new instance group to become ready.")
+		framework.Logf("removing previously added node taints")
+		removeTaintFunc()
 	}()
 
-	err = <-waitStatus
-	Expect(err).ToNot(HaveOccurred(), "Error waiting for replica to be deleted during failover: %v", err)
+	By("deleting StatefulSet pod")
+	err = c.CoreV1().Pods(ns).Delete(pod.Name, &metav1.DeleteOptions{})
+
+	// Verify the pod is scheduled in the other zone.
+	By("verifying the pod is scheduled in a different zone.")
+	var otherZone string
+	if cloudZones[0] == podZone {
+		otherZone = cloudZones[1]
+	} else {
+		otherZone = cloudZones[0]
+	}
+	err = wait.PollImmediate(framework.Poll, statefulSetReadyTimeout, func() (bool, error) {
+		framework.Logf("checking whether new pod is scheduled in zone %q", otherZone)
+		pod = getPod(c, ns, regionalPDLabels)
+		nodeName = pod.Spec.NodeName
+		node, err = c.CoreV1().Nodes().Get(nodeName, metav1.GetOptions{})
+		if err != nil {
+			return false, nil
+		}
+		newPodZone := node.Labels[apis.LabelZoneFailureDomain]
+		return newPodZone == otherZone, nil
+	})
+	Expect(err).NotTo(HaveOccurred(), "Error waiting for pod to be scheduled in a different zone (%q): %v", otherZone, err)
 
 	err = framework.WaitForStatefulSetReplicasReady(statefulSet.Name, ns, c, 3*time.Second, framework.RestartPodReadyAgainTimeout)
 	if err != nil {
@@ -237,7 +252,6 @@ func testZonalFailover(c clientset.Interface, ns string) {
 		"The same PVC should be used after failover.")
 
 	By("verifying the container output has 2 lines, indicating the pod has been created twice using the same regional PD.")
-	pod = getPod(c, ns, regionalPDLabels)
 	logs, err := framework.GetPodLogs(c, ns, pod.Name, "")
 	Expect(err).NotTo(HaveOccurred(),
 		"Error getting logs from pod %s in namespace %s", pod.Name, ns)
@@ -246,21 +260,128 @@ func testZonalFailover(c clientset.Interface, ns string) {
 	Expect(lineCount).To(Equal(expectedLineCount),
 		"Line count of the written file should be %d.", expectedLineCount)
 
-	// Verify the pod is scheduled in the other zone.
-	By("verifying the pod is scheduled in a different zone.")
-	var otherZone string
-	if cloudZones[0] == podZone {
-		otherZone = cloudZones[1]
-	} else {
-		otherZone = cloudZones[0]
-	}
-	nodeName = pod.Spec.NodeName
-	node, err = c.CoreV1().Nodes().Get(nodeName, metav1.GetOptions{})
-	Expect(err).ToNot(HaveOccurred())
-	newPodZone := node.Labels[apis.LabelZoneFailureDomain]
-	Expect(newPodZone).To(Equal(otherZone),
-		"The pod should be scheduled in zone %s after all nodes in zone %s have been deleted", otherZone, podZone)
+}
 
+func addTaint(c clientset.Interface, ns string, nodes []v1.Node, podZone string) (removeTaint func()) {
+	reversePatches := make(map[string][]byte)
+	for _, node := range nodes {
+		oldData, err := json.Marshal(node)
+		Expect(err).NotTo(HaveOccurred())
+
+		node.Spec.Taints = append(node.Spec.Taints, v1.Taint{
+			Key:    taintKeyPrefix + ns,
+			Value:  podZone,
+			Effect: v1.TaintEffectNoSchedule,
+		})
+
+		newData, err := json.Marshal(node)
+		Expect(err).NotTo(HaveOccurred())
+
+		patchBytes, err := strategicpatch.CreateTwoWayMergePatch(oldData, newData, v1.Node{})
+		Expect(err).NotTo(HaveOccurred())
+
+		reversePatchBytes, err := strategicpatch.CreateTwoWayMergePatch(newData, oldData, v1.Node{})
+		Expect(err).NotTo(HaveOccurred())
+		reversePatches[node.Name] = reversePatchBytes
+
+		_, err = c.CoreV1().Nodes().Patch(node.Name, types.StrategicMergePatchType, patchBytes)
+		Expect(err).ToNot(HaveOccurred())
+	}
+
+	return func() {
+		for nodeName, reversePatch := range reversePatches {
+			_, err := c.CoreV1().Nodes().Patch(nodeName, types.StrategicMergePatchType, reversePatch)
+			Expect(err).ToNot(HaveOccurred())
+		}
+	}
+}
+
+func testRegionalDelayedBinding(c clientset.Interface, ns string) {
+	test := storageClassTest{
+		name:        "Regional PD storage class with waitForFirstConsumer test on GCE",
+		provisioner: "kubernetes.io/gce-pd",
+		parameters: map[string]string{
+			"type":             "pd-standard",
+			"replication-type": "regional-pd",
+		},
+		claimSize:    "2Gi",
+		delayBinding: true,
+	}
+
+	suffix := "delayed-regional"
+	class := newStorageClass(test, ns, suffix)
+	claim := newClaim(test, ns, suffix)
+	claim.Spec.StorageClassName = &class.Name
+	pv, node := testBindingWaitForFirstConsumer(c, claim, class)
+	if node == nil {
+		framework.Failf("unexpected nil node found")
+	}
+	zone, ok := node.Labels[kubeletapis.LabelZoneFailureDomain]
+	if !ok {
+		framework.Failf("label %s not found on Node", kubeletapis.LabelZoneFailureDomain)
+	}
+	checkZoneFromLabelAndAffinity(pv, zone, false)
+}
+
+func testRegionalAllowedTopologies(c clientset.Interface, ns string) {
+	test := storageClassTest{
+		name:        "Regional PD storage class with allowedTopologies test on GCE",
+		provisioner: "kubernetes.io/gce-pd",
+		parameters: map[string]string{
+			"type":             "pd-standard",
+			"replication-type": "regional-pd",
+		},
+		claimSize:    "2Gi",
+		expectedSize: "2Gi",
+	}
+
+	suffix := "topo-regional"
+	class := newStorageClass(test, ns, suffix)
+	zones := getTwoRandomZones(c)
+	addAllowedTopologiesToStorageClass(c, class, zones)
+	claim := newClaim(test, ns, suffix)
+	claim.Spec.StorageClassName = &class.Name
+	pv := testDynamicProvisioning(test, c, claim, class)
+	checkZonesFromLabelAndAffinity(pv, sets.NewString(zones...), true)
+}
+
+func testRegionalAllowedTopologiesWithDelayedBinding(c clientset.Interface, ns string) {
+	test := storageClassTest{
+		name:        "Regional PD storage class with allowedTopologies and waitForFirstConsumer test on GCE",
+		provisioner: "kubernetes.io/gce-pd",
+		parameters: map[string]string{
+			"type":             "pd-standard",
+			"replication-type": "regional-pd",
+		},
+		claimSize:    "2Gi",
+		delayBinding: true,
+	}
+
+	suffix := "topo-delayed-regional"
+	class := newStorageClass(test, ns, suffix)
+	topoZones := getTwoRandomZones(c)
+	addAllowedTopologiesToStorageClass(c, class, topoZones)
+	claim := newClaim(test, ns, suffix)
+	claim.Spec.StorageClassName = &class.Name
+	pv, node := testBindingWaitForFirstConsumer(c, claim, class)
+	if node == nil {
+		framework.Failf("unexpected nil node found")
+	}
+	nodeZone, ok := node.Labels[kubeletapis.LabelZoneFailureDomain]
+	if !ok {
+		framework.Failf("label %s not found on Node", kubeletapis.LabelZoneFailureDomain)
+	}
+	zoneFound := false
+	for _, zone := range topoZones {
+		if zone == nodeZone {
+			zoneFound = true
+			break
+		}
+	}
+	if !zoneFound {
+		framework.Failf("zones specified in AllowedTopologies: %v does not contain zone of node where PV got provisioned: %s", topoZones, nodeZone)
+	}
+	checkZonesFromLabelAndAffinity(pv, sets.NewString(topoZones...), true)
 }
 
 func getPVC(c clientset.Interface, ns string, pvcLabels map[string]string) *v1.PersistentVolumeClaim {
@@ -281,6 +402,18 @@ func getPod(c clientset.Interface, ns string, podLabels map[string]string) *v1.P
 	Expect(len(podList.Items)).To(Equal(1), "There should be exactly 1 pod matched.")
 
 	return &podList.Items[0]
+}
+
+func addAllowedTopologiesToStorageClass(c clientset.Interface, sc *storage.StorageClass, zones []string) {
+	term := v1.TopologySelectorTerm{
+		MatchLabelExpressions: []v1.TopologySelectorLabelRequirement{
+			{
+				Key:    kubeletapis.LabelZoneFailureDomain,
+				Values: zones,
+			},
+		},
+	}
+	sc.AllowedTopologies = append(sc.AllowedTopologies, term)
 }
 
 // Generates the spec of a StatefulSet with 1 replica that mounts a Regional PD.
@@ -334,7 +467,7 @@ func newPodTemplate(labels map[string]string) *v1.PodTemplateSpec {
 				// and prints the entire file to stdout.
 				{
 					Name:    "busybox",
-					Image:   "k8s.gcr.io/busybox",
+					Image:   imageutils.GetE2EImage(imageutils.BusyBox),
 					Command: []string{"sh", "-c"},
 					Args: []string{
 						"echo ${POD_NAME} >> /mnt/data/regional-pd/pods.txt;" +

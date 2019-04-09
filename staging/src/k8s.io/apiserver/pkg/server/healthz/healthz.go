@@ -22,10 +22,13 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"sync/atomic"
+	"time"
 
 	"github.com/golang/glog"
 
 	"k8s.io/apimachinery/pkg/util/sets"
+	"k8s.io/apimachinery/pkg/util/wait"
 )
 
 // HealthzChecker is a named healthz checker.
@@ -56,6 +59,34 @@ func (ping) Name() string {
 // PingHealthz is a health check that returns true.
 func (ping) Check(_ *http.Request) error {
 	return nil
+}
+
+// LogHealthz returns true if logging is not blocked
+var LogHealthz HealthzChecker = &log{}
+
+type log struct {
+	startOnce    sync.Once
+	lastVerified atomic.Value
+}
+
+func (l *log) Name() string {
+	return "log"
+}
+
+func (l *log) Check(_ *http.Request) error {
+	l.startOnce.Do(func() {
+		l.lastVerified.Store(time.Now())
+		go wait.Forever(func() {
+			glog.Flush()
+			l.lastVerified.Store(time.Now())
+		}, time.Minute)
+	})
+
+	lastVerified := l.lastVerified.Load().(time.Time)
+	if time.Since(lastVerified) < (2 * time.Minute) {
+		return nil
+	}
+	return fmt.Errorf("logging blocked")
 }
 
 // NamedCheck returns a healthz checker for the given name and function.

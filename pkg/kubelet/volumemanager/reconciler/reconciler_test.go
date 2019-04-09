@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/golang/glog"
+
 	"github.com/stretchr/testify/assert"
 	"k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"

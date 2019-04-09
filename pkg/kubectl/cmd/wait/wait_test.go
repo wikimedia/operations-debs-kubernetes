@@ -32,11 +32,11 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/apimachinery/pkg/watch"
+	"k8s.io/cli-runtime/pkg/genericclioptions"
+	"k8s.io/cli-runtime/pkg/genericclioptions/printers"
+	"k8s.io/cli-runtime/pkg/genericclioptions/resource"
 	dynamicfakeclient "k8s.io/client-go/dynamic/fake"
 	clienttesting "k8s.io/client-go/testing"
-	"k8s.io/kubernetes/pkg/kubectl/genericclioptions"
-	"k8s.io/kubernetes/pkg/kubectl/genericclioptions/printers"
-	"k8s.io/kubernetes/pkg/kubectl/genericclioptions/resource"
 )
 
 func newUnstructuredList(items ...*unstructured.Unstructured) *unstructured.UnstructuredList {
@@ -76,7 +76,7 @@ func TestWaitForDeletion(t *testing.T) {
 
 	tests := []struct {
 		name       string
-		info       *resource.Info
+		infos      []*resource.Info
 		fakeClient func() *dynamicfakeclient.FakeDynamicClient
 		timeout    time.Duration
 		uidMap     UIDMap
@@ -86,12 +86,14 @@ func TestWaitForDeletion(t *testing.T) {
 	}{
 		{
 			name: "missing on get",
-			info: &resource.Info{
-				Mapping: &meta.RESTMapping{
-					Resource: schema.GroupVersionResource{Group: "group", Version: "version", Resource: "theresource"},
+			infos: []*resource.Info{
+				{
+					Mapping: &meta.RESTMapping{
+						Resource: schema.GroupVersionResource{Group: "group", Version: "version", Resource: "theresource"},
+					},
+					Name:      "name-foo",
+					Namespace: "ns-foo",
 				},
-				Name:      "name-foo",
-				Namespace: "ns-foo",
 			},
 			fakeClient: func() *dynamicfakeclient.FakeDynamicClient {
 				return dynamicfakeclient.NewSimpleDynamicClient(scheme)
@@ -108,13 +110,30 @@ func TestWaitForDeletion(t *testing.T) {
 			},
 		},
 		{
+			name:  "handles no infos",
+			infos: []*resource.Info{},
+			fakeClient: func() *dynamicfakeclient.FakeDynamicClient {
+				return dynamicfakeclient.NewSimpleDynamicClient(scheme)
+			},
+			timeout:     10 * time.Second,
+			expectedErr: errNoMatchingResources.Error(),
+
+			validateActions: func(t *testing.T, actions []clienttesting.Action) {
+				if len(actions) != 0 {
+					t.Fatal(spew.Sdump(actions))
+				}
+			},
+		},
+		{
 			name: "uid conflict on get",
-			info: &resource.Info{
-				Mapping: &meta.RESTMapping{
-					Resource: schema.GroupVersionResource{Group: "group", Version: "version", Resource: "theresource"},
+			infos: []*resource.Info{
+				{
+					Mapping: &meta.RESTMapping{
+						Resource: schema.GroupVersionResource{Group: "group", Version: "version", Resource: "theresource"},
+					},
+					Name:      "name-foo",
+					Namespace: "ns-foo",
 				},
-				Name:      "name-foo",
-				Namespace: "ns-foo",
 			},
 			fakeClient: func() *dynamicfakeclient.FakeDynamicClient {
 				fakeClient := dynamicfakeclient.NewSimpleDynamicClient(scheme)
@@ -154,12 +173,14 @@ func TestWaitForDeletion(t *testing.T) {
 		},
 		{
 			name: "times out",
-			info: &resource.Info{
-				Mapping: &meta.RESTMapping{
-					Resource: schema.GroupVersionResource{Group: "group", Version: "version", Resource: "theresource"},
+			infos: []*resource.Info{
+				{
+					Mapping: &meta.RESTMapping{
+						Resource: schema.GroupVersionResource{Group: "group", Version: "version", Resource: "theresource"},
+					},
+					Name:      "name-foo",
+					Namespace: "ns-foo",
 				},
-				Name:      "name-foo",
-				Namespace: "ns-foo",
 			},
 			fakeClient: func() *dynamicfakeclient.FakeDynamicClient {
 				fakeClient := dynamicfakeclient.NewSimpleDynamicClient(scheme)
@@ -185,12 +206,14 @@ func TestWaitForDeletion(t *testing.T) {
 		},
 		{
 			name: "handles watch close out",
-			info: &resource.Info{
-				Mapping: &meta.RESTMapping{
-					Resource: schema.GroupVersionResource{Group: "group", Version: "version", Resource: "theresource"},
+			infos: []*resource.Info{
+				{
+					Mapping: &meta.RESTMapping{
+						Resource: schema.GroupVersionResource{Group: "group", Version: "version", Resource: "theresource"},
+					},
+					Name:      "name-foo",
+					Namespace: "ns-foo",
 				},
-				Name:      "name-foo",
-				Namespace: "ns-foo",
 			},
 			fakeClient: func() *dynamicfakeclient.FakeDynamicClient {
 				fakeClient := dynamicfakeclient.NewSimpleDynamicClient(scheme)
@@ -240,12 +263,14 @@ func TestWaitForDeletion(t *testing.T) {
 		},
 		{
 			name: "handles watch delete",
-			info: &resource.Info{
-				Mapping: &meta.RESTMapping{
-					Resource: schema.GroupVersionResource{Group: "group", Version: "version", Resource: "theresource"},
+			infos: []*resource.Info{
+				{
+					Mapping: &meta.RESTMapping{
+						Resource: schema.GroupVersionResource{Group: "group", Version: "version", Resource: "theresource"},
+					},
+					Name:      "name-foo",
+					Namespace: "ns-foo",
 				},
-				Name:      "name-foo",
-				Namespace: "ns-foo",
 			},
 			fakeClient: func() *dynamicfakeclient.FakeDynamicClient {
 				fakeClient := dynamicfakeclient.NewSimpleDynamicClient(scheme)
@@ -279,7 +304,7 @@ func TestWaitForDeletion(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			fakeClient := test.fakeClient()
 			o := &WaitOptions{
-				ResourceFinder: genericclioptions.NewSimpleFakeResourceFinder(test.info),
+				ResourceFinder: genericclioptions.NewSimpleFakeResourceFinder(test.infos...),
 				UIDMap:         test.uidMap,
 				DynamicClient:  fakeClient,
 				Timeout:        test.timeout,
@@ -311,7 +336,7 @@ func TestWaitForCondition(t *testing.T) {
 
 	tests := []struct {
 		name       string
-		info       *resource.Info
+		infos      []*resource.Info
 		fakeClient func() *dynamicfakeclient.FakeDynamicClient
 		timeout    time.Duration
 
@@ -320,12 +345,14 @@ func TestWaitForCondition(t *testing.T) {
 	}{
 		{
 			name: "present on get",
-			info: &resource.Info{
-				Mapping: &meta.RESTMapping{
-					Resource: schema.GroupVersionResource{Group: "group", Version: "version", Resource: "theresource"},
+			infos: []*resource.Info{
+				{
+					Mapping: &meta.RESTMapping{
+						Resource: schema.GroupVersionResource{Group: "group", Version: "version", Resource: "theresource"},
+					},
+					Name:      "name-foo",
+					Namespace: "ns-foo",
 				},
-				Name:      "name-foo",
-				Namespace: "ns-foo",
 			},
 			fakeClient: func() *dynamicfakeclient.FakeDynamicClient {
 				fakeClient := dynamicfakeclient.NewSimpleDynamicClient(scheme)
@@ -349,13 +376,30 @@ func TestWaitForCondition(t *testing.T) {
 			},
 		},
 		{
+			name:  "handles no infos",
+			infos: []*resource.Info{},
+			fakeClient: func() *dynamicfakeclient.FakeDynamicClient {
+				return dynamicfakeclient.NewSimpleDynamicClient(scheme)
+			},
+			timeout:     10 * time.Second,
+			expectedErr: errNoMatchingResources.Error(),
+
+			validateActions: func(t *testing.T, actions []clienttesting.Action) {
+				if len(actions) != 0 {
+					t.Fatal(spew.Sdump(actions))
+				}
+			},
+		},
+		{
 			name: "times out",
-			info: &resource.Info{
-				Mapping: &meta.RESTMapping{
-					Resource: schema.GroupVersionResource{Group: "group", Version: "version", Resource: "theresource"},
+			infos: []*resource.Info{
+				{
+					Mapping: &meta.RESTMapping{
+						Resource: schema.GroupVersionResource{Group: "group", Version: "version", Resource: "theresource"},
+					},
+					Name:      "name-foo",
+					Namespace: "ns-foo",
 				},
-				Name:      "name-foo",
-				Namespace: "ns-foo",
 			},
 			fakeClient: func() *dynamicfakeclient.FakeDynamicClient {
 				fakeClient := dynamicfakeclient.NewSimpleDynamicClient(scheme)
@@ -384,12 +428,14 @@ func TestWaitForCondition(t *testing.T) {
 		},
 		{
 			name: "handles watch close out",
-			info: &resource.Info{
-				Mapping: &meta.RESTMapping{
-					Resource: schema.GroupVersionResource{Group: "group", Version: "version", Resource: "theresource"},
+			infos: []*resource.Info{
+				{
+					Mapping: &meta.RESTMapping{
+						Resource: schema.GroupVersionResource{Group: "group", Version: "version", Resource: "theresource"},
+					},
+					Name:      "name-foo",
+					Namespace: "ns-foo",
 				},
-				Name:      "name-foo",
-				Namespace: "ns-foo",
 			},
 			fakeClient: func() *dynamicfakeclient.FakeDynamicClient {
 				fakeClient := dynamicfakeclient.NewSimpleDynamicClient(scheme)
@@ -439,12 +485,14 @@ func TestWaitForCondition(t *testing.T) {
 		},
 		{
 			name: "handles watch condition change",
-			info: &resource.Info{
-				Mapping: &meta.RESTMapping{
-					Resource: schema.GroupVersionResource{Group: "group", Version: "version", Resource: "theresource"},
+			infos: []*resource.Info{
+				{
+					Mapping: &meta.RESTMapping{
+						Resource: schema.GroupVersionResource{Group: "group", Version: "version", Resource: "theresource"},
+					},
+					Name:      "name-foo",
+					Namespace: "ns-foo",
 				},
-				Name:      "name-foo",
-				Namespace: "ns-foo",
 			},
 			fakeClient: func() *dynamicfakeclient.FakeDynamicClient {
 				fakeClient := dynamicfakeclient.NewSimpleDynamicClient(scheme)
@@ -477,12 +525,14 @@ func TestWaitForCondition(t *testing.T) {
 		},
 		{
 			name: "handles watch created",
-			info: &resource.Info{
-				Mapping: &meta.RESTMapping{
-					Resource: schema.GroupVersionResource{Group: "group", Version: "version", Resource: "theresource"},
+			infos: []*resource.Info{
+				{
+					Mapping: &meta.RESTMapping{
+						Resource: schema.GroupVersionResource{Group: "group", Version: "version", Resource: "theresource"},
+					},
+					Name:      "name-foo",
+					Namespace: "ns-foo",
 				},
-				Name:      "name-foo",
-				Namespace: "ns-foo",
 			},
 			fakeClient: func() *dynamicfakeclient.FakeDynamicClient {
 				fakeClient := dynamicfakeclient.NewSimpleDynamicClient(scheme)
@@ -516,7 +566,7 @@ func TestWaitForCondition(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			fakeClient := test.fakeClient()
 			o := &WaitOptions{
-				ResourceFinder: genericclioptions.NewSimpleFakeResourceFinder(test.info),
+				ResourceFinder: genericclioptions.NewSimpleFakeResourceFinder(test.infos...),
 				DynamicClient:  fakeClient,
 				Timeout:        test.timeout,
 

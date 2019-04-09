@@ -3,9 +3,11 @@ load("@io_bazel_rules_go//go:def.bzl", "go_library")
 go_library(
     name = "go_default_library",
     srcs = [
+        "api_linter.go",
         "extension.go",
         "openapi.go",
     ],
+    importmap = "k8s.io/kubernetes/vendor/k8s.io/kube-openapi/pkg/generators",
     importpath = "k8s.io/kube-openapi/pkg/generators",
     visibility = ["//visibility:public"],
     deps = [
@@ -15,7 +17,9 @@ go_library(
         "//vendor/k8s.io/gengo/generator:go_default_library",
         "//vendor/k8s.io/gengo/namer:go_default_library",
         "//vendor/k8s.io/gengo/types:go_default_library",
+        "//vendor/k8s.io/kube-openapi/cmd/openapi-gen/args:go_default_library",
         "//vendor/k8s.io/kube-openapi/pkg/common:go_default_library",
+        "//vendor/k8s.io/kube-openapi/pkg/generators/rules:go_default_library",
     ],
 )
 
@@ -28,7 +32,10 @@ filegroup(
 
 filegroup(
     name = "all-srcs",
-    srcs = [":package-srcs"],
+    srcs = [
+        ":package-srcs",
+        "//vendor/k8s.io/kube-openapi/pkg/generators/rules:all-srcs",
+    ],
     tags = ["automanaged"],
     visibility = ["//visibility:public"],
 )

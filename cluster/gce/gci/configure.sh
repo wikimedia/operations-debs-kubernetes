@@ -28,8 +28,8 @@ DEFAULT_CNI_VERSION="v0.7.5"
 DEFAULT_CNI_SHA1="52e9d2de8a5f927307d9397308735658ee44ab8d"
 DEFAULT_NPD_VERSION="v0.6.0"
 DEFAULT_NPD_SHA1="a28e960a21bb74bc0ae09c267b6a340f30e5b3a6"
-DEFAULT_CRICTL_VERSION="v1.11.1"
-DEFAULT_CRICTL_SHA1="527fca5a0ecef6a8e6433e2af9cf83f63aff5694"
+DEFAULT_CRICTL_VERSION="v1.12.0"
+DEFAULT_CRICTL_SHA1="82ef8b44849f9da0589c87e9865d4716573eec7f"
 DEFAULT_MOUNTER_TAR_SHA="8003b798cf33c7f91320cd6ee5cec4fa22244571"
 ###
 
@@ -275,14 +275,6 @@ function install-exec-auth-plugin {
   download-or-bust "${plugin_sha1}" "${plugin_url}"
   mv "${KUBE_HOME}/gke-exec-auth-plugin" "${KUBE_BIN}/gke-exec-auth-plugin"
   chmod a+x "${KUBE_BIN}/gke-exec-auth-plugin"
-
-  if [[ ! "${EXEC_AUTH_PLUGIN_LICENSE_URL:-}" ]]; then
-      return
-  fi
-  local -r license_url="${EXEC_AUTH_PLUGIN_LICENSE_URL}"
-  echo "Downloading gke-exec-auth-plugin license"
-  download-or-bust "" "${license_url}"
-  mv "${KUBE_HOME}/LICENSE" "${KUBE_BIN}/gke-exec-auth-plugin-license"
 }
 
 function install-kube-manifests {
@@ -429,7 +421,6 @@ function install-kube-binary-config {
   install-crictl
 
   if [[ "${KUBERNETES_MASTER:-}" == "false" ]]; then
-    # TODO(awly): include the binary and license in the OS image.
     install-exec-auth-plugin
   fi
 

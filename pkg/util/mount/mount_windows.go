@@ -156,16 +156,6 @@ func (mounter *Mounter) Unmount(target string) error {
 	return nil
 }
 
-// GetMountRefs : empty implementation here since there is no place to query all mount points on Windows
-func GetMountRefs(mounter Interface, mountPath string) ([]string, error) {
-	if _, err := os.Stat(normalizeWindowsPath(mountPath)); os.IsNotExist(err) {
-		return []string{}, nil
-	} else if err != nil {
-		return nil, err
-	}
-	return []string{mountPath}, nil
-}
-
 // List returns a list of all mounted filesystems. todo
 func (mounter *Mounter) List() ([]MountPoint, error) {
 	return []MountPoint{}, nil
@@ -212,7 +202,7 @@ func (mounter *Mounter) GetDeviceNameFromMount(mountPath, pluginDir string) (str
 // the mount path reference should match the given plugin directory. In case no mount path reference
 // matches, returns the volume name taken from its given mountPath
 func getDeviceNameFromMount(mounter Interface, mountPath, pluginDir string) (string, error) {
-	refs, err := GetMountRefs(mounter, mountPath)
+	refs, err := mounter.GetMountRefs(mountPath)
 	if err != nil {
 		glog.V(4).Infof("GetMountRefs failed for mount path %q: %v", mountPath, err)
 		return "", err
@@ -284,6 +274,11 @@ func (mounter *Mounter) ExistsPath(pathname string) (bool, error) {
 	return utilfile.FileExists(pathname)
 }
 
+// EvalHostSymlinks returns the path name after evaluating symlinks
+func (mounter *Mounter) EvalHostSymlinks(pathname string) (string, error) {
+	return filepath.EvalSymlinks(pathname)
+}
+
 // check whether hostPath is within volume path
 // this func will lock all intermediate subpath directories, need to close handle outside of this func after container started
 func lockAndCheckSubPath(volumePath, hostPath string) ([]uintptr, error) {
@@ -350,7 +345,7 @@ func lockAndCheckSubPathWithoutSymlink(volumePath, subPath string) ([]uintptr, e
 			break
 		}
 
-		if !pathWithinBase(currentFullPath, volumePath) {
+		if !PathWithinBase(currentFullPath, volumePath) {
 			errorResult = fmt.Errorf("SubPath %q not within volume path %q", currentFullPath, volumePath)
 			break
 		}
@@ -501,10 +496,14 @@ func getAllParentLinks(path string) ([]string, error) {
 
 // GetMountRefs : empty implementation here since there is no place to query all mount points on Windows
 func (mounter *Mounter) GetMountRefs(pathname string) ([]string, error) {
-	if _, err := os.Stat(normalizeWindowsPath(pathname)); os.IsNotExist(err) {
+	pathExists, pathErr := PathExists(normalizeWindowsPath(pathname))
+	// TODO(#75012): Need a Windows specific IsCorruptedMnt function that checks against whatever errno's
+	// Windows emits when we try to Stat a corrupted mount
+	// https://golang.org/pkg/syscall/?GOOS=windows&GOARCH=amd64#Errno
+	if !pathExists {
 		return []string{}, nil
-	} else if err != nil {
-		return nil, err
+	} else if pathErr != nil {
+		return nil, fmt.Errorf("error checking path %s: %v", normalizeWindowsPath(pathname), pathErr)
 	}
 	return []string{pathname}, nil
 }
@@ -542,7 +541,7 @@ func (mounter *Mounter) SafeMakeDir(subdir string, base string, perm os.FileMode
 func doSafeMakeDir(pathname string, base string, perm os.FileMode) error {
 	glog.V(4).Infof("Creating directory %q within base %q", pathname, base)
 
-	if !pathWithinBase(pathname, base) {
+	if !PathWithinBase(pathname, base) {
 		return fmt.Errorf("path %s is outside of allowed base %s", pathname, base)
 	}
 
@@ -577,7 +576,7 @@ func doSafeMakeDir(pathname string, base string, perm os.FileMode) error {
 	if err != nil {
 		return fmt.Errorf("cannot read link %s: %s", base, err)
 	}
-	if !pathWithinBase(fullExistingPath, fullBasePath) {
+	if !PathWithinBase(fullExistingPath, fullBasePath) {
 		return fmt.Errorf("path %s is outside of allowed base %s", fullExistingPath, err)
 	}
 
