@@ -123,9 +123,10 @@ func PatchResource(r rest.Patcher, scope RequestScope, admit admission.Interface
 			return
 		}
 		gv := scope.Kind.GroupVersion()
+
 		codec := runtime.NewCodec(
 			scope.Serializer.EncoderForVersion(s.Serializer, gv),
-			scope.Serializer.DecoderToVersion(s.Serializer, schema.GroupVersion{Group: gv.Group, Version: runtime.APIVersionInternal}),
+			scope.Serializer.DecoderToVersion(s.Serializer, scope.HubGroupVersion),
 		)
 
 		userInfo, _ := request.UserFrom(ctx)
@@ -168,6 +169,8 @@ func PatchResource(r rest.Patcher, scope RequestScope, admit admission.Interface
 			kind:            scope.Kind,
 			resource:        scope.Resource,
 
+			hubGroupVersion: scope.HubGroupVersion,
+
 			createValidation: rest.AdmissionToValidateObjectFunc(admit, staticAdmissionAttributes),
 			updateValidation: rest.AdmissionToValidateObjectUpdateFunc(admit, staticAdmissionAttributes),
 			admissionCheck:   admissionCheck,
@@ -203,6 +206,7 @@ func PatchResource(r rest.Patcher, scope RequestScope, admit admission.Interface
 		}
 		trace.Step("Self-link added")
 
+		scope.Trace = trace
 		transformResponseObject(ctx, scope, req, w, http.StatusOK, result)
 	}
 }
@@ -222,6 +226,8 @@ type patcher struct {
 	unsafeConvertor runtime.ObjectConvertor
 	resource        schema.GroupVersionResource
 	kind            schema.GroupVersionKind
+
+	hubGroupVersion schema.GroupVersion
 
 	// Validation functions
 	createValidation rest.ValidateObjectFunc
@@ -247,11 +253,6 @@ type patcher struct {
 	mechanism         patchMechanism
 }
 
-func (p *patcher) toUnversioned(versionedObj runtime.Object) (runtime.Object, error) {
-	gvk := p.kind.GroupKind().WithVersion(runtime.APIVersionInternal)
-	return p.unsafeConvertor.ConvertToVersion(versionedObj, gvk.GroupVersion())
-}
-
 type patchMechanism interface {
 	applyPatchToCurrentObject(currentObject runtime.Object) (runtime.Object, error)
 }
@@ -270,7 +271,7 @@ func (p *jsonPatcher) applyPatchToCurrentObject(currentObject runtime.Object) (r
 	// Apply the patch.
 	patchedObjJS, err := p.applyJSPatch(currentObjJS)
 	if err != nil {
-		return nil, interpretPatchError(err)
+		return nil, err
 	}
 
 	// Construct the resulting typed, unversioned object.
@@ -287,6 +288,15 @@ func (p *jsonPatcher) applyPatchToCurrentObject(currentObject runtime.Object) (r
 func (p *jsonPatcher) applyJSPatch(versionedJS []byte) (patchedJS []byte, retErr error) {
 	switch p.patchType {
 	case types.JSONPatchType:
+		// sanity check potentially abusive patches
+		// TODO(liggitt): drop this once golang json parser limits stack depth (https://github.com/golang/go/issues/31789)
+		if len(p.patchJS) > 1024*1024 {
+			v := []interface{}{}
+			if err := json.Unmarshal(p.patchJS, v); err != nil {
+				return nil, errors.NewBadRequest(fmt.Sprintf("error decoding patch: %v", err))
+			}
+		}
+
 		patchObj, err := jsonpatch.DecodePatch(p.patchJS)
 		if err != nil {
 			return nil, errors.NewBadRequest(err.Error())
@@ -302,6 +312,15 @@ func (p *jsonPatcher) applyJSPatch(versionedJS []byte) (patchedJS []byte, retErr
 		}
 		return patchedJS, nil
 	case types.MergePatchType:
+		// sanity check potentially abusive patches
+		// TODO(liggitt): drop this once golang json parser limits stack depth (https://github.com/golang/go/issues/31789)
+		if len(p.patchJS) > 1024*1024 {
+			v := map[string]interface{}{}
+			if err := json.Unmarshal(p.patchJS, v); err != nil {
+				return nil, errors.NewBadRequest(fmt.Sprintf("error decoding patch: %v", err))
+			}
+		}
+
 		return jsonpatch.MergePatch(versionedJS, p.patchJS)
 	default:
 		// only here as a safety net - go-restful filters content-type
@@ -330,13 +349,8 @@ func (p *smpPatcher) applyPatchToCurrentObject(currentObject runtime.Object) (ru
 	if err := strategicPatchObject(p.defaulter, currentVersionedObject, p.patchJS, versionedObjToUpdate, p.schemaReferenceObj); err != nil {
 		return nil, err
 	}
-	// Convert the object back to unversioned (aka internal version).
-	unversionedObjToUpdate, err := p.toUnversioned(versionedObjToUpdate)
-	if err != nil {
-		return nil, err
-	}
-
-	return unversionedObjToUpdate, nil
+	// Convert the object back to the hub version
+	return p.unsafeConvertor.ConvertToVersion(versionedObjToUpdate, p.hubGroupVersion)
 }
 
 // strategicPatchObject applies a strategic merge patch of <patchJS> to
@@ -429,7 +443,7 @@ func applyPatchToObject(
 ) error {
 	patchedObjMap, err := strategicpatch.StrategicMergeMapPatch(originalMap, patchMap, schemaReferenceObj)
 	if err != nil {
-		return interpretPatchError(err)
+		return interpretStrategicMergePatchError(err)
 	}
 
 	// Rather than serialize the patched map to JSON, then decode it to an object, we go directly from a map to an object
@@ -442,8 +456,8 @@ func applyPatchToObject(
 	return nil
 }
 
-// interpretPatchError interprets the error type and returns an error with appropriate HTTP code.
-func interpretPatchError(err error) error {
+// interpretStrategicMergePatchError interprets the error type and returns an error with appropriate HTTP code.
+func interpretStrategicMergePatchError(err error) error {
 	switch err {
 	case mergepatch.ErrBadJSONDoc, mergepatch.ErrBadPatchFormatForPrimitiveList, mergepatch.ErrBadPatchFormatForRetainKeys, mergepatch.ErrBadPatchFormatForSetElementOrderList, mergepatch.ErrUnsupportedStrategicMergePatchFormat:
 		return errors.NewBadRequest(err.Error())

@@ -27,11 +27,11 @@ import (
 
 	"k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/kubernetes/pkg/cloudprovider"
+	cloudprovider "k8s.io/cloud-provider"
 
 	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2019-03-01/compute"
-	"github.com/Azure/azure-sdk-for-go/services/network/mgmt/2017-09-01/network"
-	"github.com/Azure/azure-sdk-for-go/services/storage/mgmt/2017-10-01/storage"
+	"github.com/Azure/azure-sdk-for-go/services/network/mgmt/2018-07-01/network"
+	"github.com/Azure/azure-sdk-for-go/services/storage/mgmt/2018-07-01/storage"
 	"github.com/Azure/go-autorest/autorest"
 	"github.com/Azure/go-autorest/autorest/to"
 )
@@ -189,7 +189,21 @@ func (fAPC *fakeAzurePIPClient) Get(ctx context.Context, resourceGroupName strin
 	}
 	return result, autorest.DetailedError{
 		StatusCode: http.StatusNotFound,
-		Message:    "Not such PIP",
+		Message:    "No such PIP",
+	}
+}
+
+func (fAPC *fakeAzurePIPClient) GetVirtualMachineScaleSetPublicIPAddress(ctx context.Context, resourceGroupName string, virtualMachineScaleSetName string, virtualmachineIndex string, networkInterfaceName string, IPConfigurationName string, publicIPAddressName string, expand string) (result network.PublicIPAddress, err error) {
+	fAPC.mutex.Lock()
+	defer fAPC.mutex.Unlock()
+	if _, ok := fAPC.FakeStore[resourceGroupName]; ok {
+		if entity, ok := fAPC.FakeStore[resourceGroupName][publicIPAddressName]; ok {
+			return entity, nil
+		}
+	}
+	return result, autorest.DetailedError{
+		StatusCode: http.StatusNotFound,
+		Message:    "No such PIP",
 	}
 }
 

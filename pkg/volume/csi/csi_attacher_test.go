@@ -21,10 +21,11 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 	"time"
 
-	"github.com/golang/glog"
+	corev1 "k8s.io/api/core/v1"
 	storage "k8s.io/api/storage/v1beta1"
 	apierrs "k8s.io/apimachinery/pkg/api/errors"
 	meta "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -39,6 +40,7 @@ import (
 	core "k8s.io/client-go/testing"
 	utiltesting "k8s.io/client-go/util/testing"
 	fakecsi "k8s.io/csi-api/pkg/client/clientset/versioned/fake"
+	"k8s.io/klog"
 	"k8s.io/kubernetes/pkg/features"
 	"k8s.io/kubernetes/pkg/volume"
 	volumetest "k8s.io/kubernetes/pkg/volume/testing"
@@ -85,11 +87,11 @@ func markVolumeAttached(t *testing.T, client clientset.Interface, watch *watch.R
 			t.Error(err)
 		}
 		if attach != nil {
-			glog.Infof("stopping wait")
+			klog.Infof("stopping wait")
 			break
 		}
 	}
-	glog.Infof("stopped wait")
+	klog.Infof("stopped wait")
 
 	if attach == nil {
 		t.Logf("attachment not found for id:%v", attachID)
@@ -696,6 +698,7 @@ func TestAttacherMountDevice(t *testing.T) {
 		volName         string
 		devicePath      string
 		deviceMountPath string
+		mountOptions    []string
 		stageUnstageSet bool
 		shouldFail      bool
 	}{
@@ -704,6 +707,14 @@ func TestAttacherMountDevice(t *testing.T) {
 			volName:         "test-vol1",
 			devicePath:      "path1",
 			deviceMountPath: "path2",
+			stageUnstageSet: true,
+		},
+		{
+			testName:        "normal PV with mount options",
+			volName:         "test-vol1",
+			devicePath:      "path1",
+			deviceMountPath: "path2",
+			mountOptions:    []string{"test-op"},
 			stageUnstageSet: true,
 		},
 		{
@@ -762,7 +773,13 @@ func TestAttacherMountDevice(t *testing.T) {
 		nodeName := string(csiAttacher.plugin.host.GetNodeName())
 
 		// Create spec
-		pv := makeTestPV(pvName, 10, testDriver, tc.volName)
+		var pv *corev1.PersistentVolume
+		if len(tc.mountOptions) != 0 {
+			pv = makeTestPVWithMountOptions(pvName, 10, testDriver, "test-vol1", tc.mountOptions)
+		} else {
+			pv = makeTestPV(pvName, 10, testDriver, tc.volName)
+		}
+
 		spec = volume.NewSpecFromPersistentVolume(pv, pv.Spec.PersistentVolumeSource.CSI.ReadOnly)
 
 		attachID := getAttachmentName(tc.volName, testDriver, nodeName)
@@ -810,6 +827,10 @@ func TestAttacherMountDevice(t *testing.T) {
 			if vol.Path != tc.deviceMountPath {
 				t.Errorf("expected mount path: %s. got: %s", tc.deviceMountPath, vol.Path)
 			}
+			if !reflect.DeepEqual(vol.MountFlags, tc.mountOptions) {
+				t.Errorf("expected mount flags: %v. got: %v", tc.mountOptions, vol.MountFlags)
+			}
+
 		}
 	}
 }

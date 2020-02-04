@@ -41,6 +41,11 @@ func LockAndCheckSubPath(volumePath, subPath string) ([]uintptr, error) {
 func UnlockPath(fileHandles []uintptr) {
 }
 
+// LocalEndpoint empty implementation
+func LocalEndpoint(path, file string) string {
+	return ""
+}
+
 // GetBootTime empty implementation
 func GetBootTime() (time.Time, error) {
 	return time.Time{}, fmt.Errorf("GetBootTime is unsupported in this build")

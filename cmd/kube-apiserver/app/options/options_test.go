@@ -98,7 +98,6 @@ func TestAddFlags(t *testing.T) {
 		"--enable-logs-handler=false",
 		"--enable-swagger-ui=true",
 		"--endpoint-reconciler-type=" + string(reconcilers.LeaseEndpointReconcilerType),
-		"--etcd-quorum-read=false",
 		"--etcd-keyfile=/var/run/kubernetes/etcd.key",
 		"--etcd-certfile=/var/run/kubernetes/etcdce.crt",
 		"--etcd-cafile=/var/run/kubernetes/etcdca.crt",
@@ -112,7 +111,7 @@ func TestAddFlags(t *testing.T) {
 		"--proxy-client-cert-file=/var/run/kubernetes/proxy.crt",
 		"--proxy-client-key-file=/var/run/kubernetes/proxy.key",
 		"--request-timeout=2m",
-		"--storage-backend=etcd2",
+		"--storage-backend=etcd3",
 	}
 	fs.Parse(args)
 
@@ -130,8 +129,8 @@ func TestAddFlags(t *testing.T) {
 			MaxMutatingRequestsInFlight: 200,
 			RequestTimeout:              time.Duration(2) * time.Minute,
 			MinRequestTimeout:           1800,
-			JSONPatchMaxCopyBytes:       int64(100 * 1024 * 1024),
-			MaxRequestBodyBytes:         int64(100 * 1024 * 1024),
+			JSONPatchMaxCopyBytes:       int64(3 * 1024 * 1024),
+			MaxRequestBodyBytes:         int64(3 * 1024 * 1024),
 		},
 		Admission: &kubeoptions.AdmissionOptions{
 			GenericAdmission: &apiserveroptions.AdmissionOptions{
@@ -144,11 +143,9 @@ func TestAddFlags(t *testing.T) {
 		},
 		Etcd: &apiserveroptions.EtcdOptions{
 			StorageConfig: storagebackend.Config{
-				Type:       "etcd2",
-				ServerList: nil,
-				Prefix:     "/registry",
-				DeserializationCacheSize: 0,
-				Quorum:                false,
+				Type:                  "etcd3",
+				ServerList:            nil,
+				Prefix:                "/registry",
 				KeyFile:               "/var/run/kubernetes/etcd.key",
 				CAFile:                "/var/run/kubernetes/etcdca.crt",
 				CertFile:              "/var/run/kubernetes/etcdce.crt",

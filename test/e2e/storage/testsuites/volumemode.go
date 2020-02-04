@@ -47,8 +47,7 @@ var _ TestSuite = &volumeModeTestSuite{}
 func InitVolumeModeTestSuite() TestSuite {
 	return &volumeModeTestSuite{
 		tsInfo: TestSuiteInfo{
-			name:       "volumeMode",
-			featureTag: "[Feature:BlockVolume]",
+			name: "volumeMode",
 			testPatterns: []testpatterns.TestPattern{
 				testpatterns.FsVolModePreprovisionedPV,
 				testpatterns.FsVolModeDynamicPV,
@@ -197,7 +196,7 @@ func (s *volumeModeTestResource) setupResource(driver drivers.TestDriver, patter
 			}
 			s.sc.VolumeBindingMode = &volBindMode
 
-			claimSize := "2Gi"
+			claimSize := "5Gi"
 			s.pvc = getClaim(claimSize, ns.Name)
 			s.pvc.Spec.StorageClassName = &s.sc.Name
 			s.pvc.Spec.VolumeMode = &volMode
