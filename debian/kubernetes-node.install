@@ -1,0 +1,2 @@
+_output/kubernetes/server/bin/kubelet usr/bin/
+_output/kubernetes/server/bin/kube-proxy usr/bin/

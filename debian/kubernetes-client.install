@@ -1,1 +1,2 @@
-debian/etc/kubernetes/config    /etc/kubernetes/
+debian/etc/kubernetes/config    etc/kubernetes/
+_output/kubernetes/server/bin/kubectl usr/bin/

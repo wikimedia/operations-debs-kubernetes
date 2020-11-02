@@ -2,52 +2,48 @@ Source: kubernetes
 Section: admin
 Priority: optional
 Maintainer: Alexandros Kosiaris <akosiaris@wikimedia.org>
-Build-Depends: debhelper (>= 9), bash-completion, dh-systemd, golang (>= 1.8), go-bindata
-Standards-Version: 3.9.8
+Build-Depends: debhelper (>= 12~), bash-completion, curl
+Standards-Version: 4.5.0
 Homepage: http://kubernetes.io/
-Vcs-Browser: https://anonscm.debian.org/cgit/collab-maint/kubernetes.git
-Vcs-Git: https://anonscm.debian.org/git/collab-maint/kubernetes.git
 
 Package: kubernetes-client
-Provides: kubernetes-utils
 Architecture: linux-any
-Depends: ${misc:Depends}, ${shlibs:Depends}
-Recommends: ${misc:Recommends}
-Built-Using: ${misc:Built-Using}
-Description: Kubernetes client tools
- Kubernetes command line utilities:
-  * kubectl -- Kubernetes cluster management utility
+Depends: ${shlibs:Depends}, ${misc:Depends}
+Pre-Depends: ${misc:Pre-Depends}
+Description: Kubernetes client binary (kubectl)
+ Kubernetes is a portable, extensible, open-source platform for managing
+ containerized workloads and services, that facilitates both declarative
+ configuration and automation. It has a large, rapidly growing ecosystem.
+ Kubernetes services, support, and tools are widely available.
+ .
+ Currently this package only ships the kubectl binary. Configuration
+ (via kubeconfig) will has to be created via other means.
+
+Package: kubernetes-node
+Architecture: linux-any
+Depends: ${shlibs:Depends}, ${misc:Depends}, iptables (>= 1.4.21), iproute2, conntrack, ethtool, mount, socat, adduser
+Recommends: docker.io | docker-ce
+Pre-Depends: ${misc:Pre-Depends}
+Description: Kubernetes node binaries (kubelet, kube-proxy)
+ Kubernetes is a portable, extensible, open-source platform for managing
+ containerized workloads and services, that facilitates both declarative
+ configuration and automation. It has a large, rapidly growing ecosystem.
+ Kubernetes services, support, and tools are widely available.
+ .
+ Currently this package only ships the kubelet and the kube-proxy binaries.
+ Configuration, including connecting to the Kubernetes control plane (via
+ kubeconfig) will has to be created via other means.
 
 Package: kubernetes-master
 Architecture: linux-any
-Depends: ${misc:Depends}, ${shlibs:Depends}, adduser
-Recommends: ${misc:Recommends}, kubernetes-client
-Built-Using: ${misc:Built-Using}
-Description: Kubernetes services for master host
- Container Cluster Manager from Google. Kubernetes is an open source system
- for managing containerized applications across multiple hosts, providing
- basic mechanisms for deployment, maintenance, and scaling of applications.
+Depends: ${shlibs:Depends}, ${misc:Depends}
+Pre-Depends: ${misc:Pre-Depends}
+Description: Kubernetes master binaries
+ Kubernetes is a portable, extensible, open-source platform for managing
+ containerized workloads and services, that facilitates both declarative
+ configuration and automation. It has a large, rapidly growing ecosystem.
+ Kubernetes services, support, and tools are widely available.
  .
- Linux kernel version 3.8 or above is required for proper operation of the
- daemon process, and that any lower versions may have subtle and/or glaring
- issues.
- .
- This package provides "kube-apiserver", "kube-controller-manager" and
- "kube-scheduler" daemons.
-
-Package: kubernetes-node
-Provides: cadvisor
-Architecture: linux-any
-Depends: ${misc:Depends}, ${shlibs:Depends}, adduser, docker.io | docker-engine | docker-ce
-Recommends: ${misc:Recommends}, kubernetes-client
-Built-Using: ${misc:Built-Using}
-Description: Kubernetes services for node host
- Container Cluster Manager from Google. Kubernetes is an open source system
- for managing containerized applications across multiple hosts, providing
- basic mechanisms for deployment, maintenance, and scaling of applications.
- .
- Linux kernel version 3.8 or above is required for proper operation of the
- daemon process, and that any lower versions may have subtle and/or glaring
- issues.
- .
- This package provides "kube-proxy" and "kubelet" daemons.
+ Current this package only ships the Kubernetes master binaries kube-apiserver,
+ kube-scheduler and kube-controller-manager. Configuration, including
+ interconnection (via kubeconfig) will has to be created via other means.
