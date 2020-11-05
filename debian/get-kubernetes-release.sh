@@ -17,5 +17,5 @@ set -e
 SHA512_SUM=$(sed -nE 's|.*([0-9a-f]{128}).*|\1|p' < CHANGELOG.md)
 TAR_URL=$(sed -nE 's|.*\((https.+)\).*|\1|p' < CHANGELOG.md)
 
-test -f "${TAR_NAME}" || curl -sL "${TAR_URL}" > "${TAR_NAME}"
+curl -sL "${TAR_URL}" > "${TAR_NAME}"
 echo -n "$cat $SHA512_SUM  ${TAR_NAME}" | sha512sum --status -c
