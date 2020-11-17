@@ -7,10 +7,14 @@ CHANGELOG_URL="https://raw.githubusercontent.com/kubernetes/kubernetes/master/CH
 
 set +e
 curl -sL "${CHANGELOG_URL}" | grep "${DEB_VERSION_UPSTREAM}/${TAR_NAME}" > CHANGELOG.md
-if [ ${PIPESTATUS[0]} -eq 7 ]; then
+curl_exit=${PIPESTATUS[0]}
+if [ $curl_exit -eq 7 ]; then
     >&2 echo "curl failed to connect to host"
     >&2 echo "Do you need to set http(s)_proxy variables?"
     exit 7
+elif [ $curl_exit -ne 0 ]; then
+    >&2 echo "Curl exited with exitcode $curl_exit"
+    exit $curl_exit
 fi
 set -e
 
