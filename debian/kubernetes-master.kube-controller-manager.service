@@ -5,15 +5,9 @@ Documentation=man:kube-controller-manager
 After=network.target
 
 [Service]
-Environment=KUBE_MASTER=--master=127.0.0.1:8080
-EnvironmentFile=-/etc/kubernetes/config
 EnvironmentFile=-/etc/default/%p
 User=kube
-ExecStart=/usr/bin/kube-controller-manager \
-    $KUBE_LOGTOSTDERR \
-    $KUBE_LOG_LEVEL \
-    $KUBE_MASTER \
-        $DAEMON_ARGS
+ExecStart=/usr/bin/kube-controller-manager $DAEMON_ARGS
 Restart=on-failure
 LimitNOFILE=65536
 

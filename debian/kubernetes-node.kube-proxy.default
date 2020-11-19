@@ -1,6 +1,0 @@
-###
-# Kubernetes proxy config.
-
-# default config should be adequate
-
-#DAEMON_ARGS=""

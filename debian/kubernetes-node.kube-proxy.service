@@ -5,13 +5,8 @@ Documentation=man:kube-proxy
 After=network.target
 
 [Service]
-EnvironmentFile=-/etc/kubernetes/config
 EnvironmentFile=-/etc/default/%p
-ExecStart=/usr/bin/kube-proxy \
-    $KUBE_LOGTOSTDERR \
-    $KUBE_LOG_LEVEL \
-    $KUBE_MASTER \
-        $DAEMON_ARGS
+ExecStart=/usr/bin/kube-proxy $DAEMON_ARGS
 Restart=on-failure
 LimitNOFILE=65536
 

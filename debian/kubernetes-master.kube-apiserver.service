@@ -7,20 +7,9 @@ After=etcd.service
 Wants=etcd.service
 
 [Service]
-EnvironmentFile=-/etc/kubernetes/config
 EnvironmentFile=-/etc/default/%p
 User=kube
-ExecStart=/usr/bin/kube-apiserver \
-    $KUBE_LOGTOSTDERR \
-    $KUBE_LOG_LEVEL \
-    $KUBE_ALLOW_PRIV \
-        $KUBE_API_ADDRESS \
-        $KUBE_API_PORT \
-        $KUBELET_PORT \
-        $KUBE_ETCD_SERVERS \
-        $KUBE_SERVICE_ADDRESSES \
-        $KUBE_ADMISSION_CONTROL \
-        $DAEMON_ARGS
+ExecStart=/usr/bin/kube-apiserver $DAEMON_ARGS
 Restart=on-failure
 Type=notify
 LimitNOFILE=65536

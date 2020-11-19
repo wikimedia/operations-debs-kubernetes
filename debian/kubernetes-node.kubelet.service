@@ -8,19 +8,9 @@ Requires=docker.service
 Conflicts=cadvisor.service
 
 [Service]
-WorkingDirectory=/var/lib/kubelet
-EnvironmentFile=-/etc/kubernetes/config
 EnvironmentFile=-/etc/default/%p
-ExecStart=/usr/bin/kubelet \
-    $KUBE_LOGTOSTDERR \
-    $KUBE_LOG_LEVEL \
-    $KUBE_ALLOW_PRIV \
-        $KUBELET_ADDRESS \
-        $KUBELET_PORT \
-        $KUBELET_HOSTNAME \
-        $DOCKER_ENDPOINT \
-        $CADVISOR_PORT \
-        $DAEMON_ARGS
+WorkingDirectory=/var/lib/kubelet
+ExecStart=/usr/bin/kubelet $DAEMON_ARGS
 Restart=on-failure
 
 [Install]
