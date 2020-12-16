@@ -2,7 +2,7 @@ Source: kubernetes
 Section: admin
 Priority: optional
 Maintainer: Alexandros Kosiaris <akosiaris@wikimedia.org>
-Build-Depends: debhelper (>= 10) bash-completion, curl, ca-certificates
+Build-Depends: debhelper (>= 10), bash-completion, curl, ca-certificates
 Standards-Version: 4.5.0
 Homepage: http://kubernetes.io/
 
