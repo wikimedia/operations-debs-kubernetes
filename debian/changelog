@@ -1,3 +1,9 @@
+kubernetes (1.16.15-3) unstable; urgency=medium
+
+  * Don't register /var/run/kubernetes (as it's unused); Bug: T270298
+
+ -- Janis Meybohm <jmeybohm@wikimedia.org>  Fri, 18 Dec 2020 15:17:47 +0100
+
 kubernetes (1.16.15-2) unstable; urgency=medium
 
   * Don't ship any default config files with the packages
