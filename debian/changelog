@@ -1,3 +1,9 @@
+kubernetes (1.16.15-4) unstable; urgency=medium
+
+  * Restart systemd units after package upgrade
+
+ -- Janis Meybohm <jmeybohm@wikimedia.org>  Fri, 18 Dec 2020 16:50:47 +0100
+
 kubernetes (1.16.15-3) unstable; urgency=medium
 
   * Don't register /var/run/kubernetes (as it's unused); Bug: T270298

@@ -4,9 +4,11 @@ include /usr/share/dpkg/pkg-info.mk
 # See debhelper(7) (uncomment to enable)
 # output every command that modifies files on the build system.
 export DH_VERBOSE = 1
+# Don't build dbgsym packages
+export DEB_BUILD_OPTIONS = noddebs
 
 %:
-	dh $@ --with bash-completion
+	dh $@ --with=bash-completion
 
 override_dh_auto_build:
 	./debian/get-kubernetes-release.sh "$(DEB_VERSION_UPSTREAM)"
@@ -17,10 +19,14 @@ override_dh_auto_build:
 	mkdir -p _output/bash-completion
 	_output/kubernetes/server/bin/kubectl completion bash >_output/bash-completion/kubectl
 
-override_dh_installinit:
-	dh_installinit -p kubernetes-master --name=kube-apiserver
-	dh_installinit -p kubernetes-master --name=kube-controller-manager
-	dh_installinit -p kubernetes-master --name=kube-scheduler
-	dh_installinit -p kubernetes-node --name=kube-proxy
-	dh_installinit -p kubernetes-node --name=kubelet
-	dh_installinit --no-start
+override_dh_installsystemd:
+	# Master units
+	dh_installsystemd --no-start --name=kube-apiserver
+	dh_installsystemd --no-start --name=kube-controller-manager
+	dh_installsystemd --no-start --name=kube-scheduler
+	# Node units
+	dh_installsystemd --no-start --name=kube-proxy
+	dh_installsystemd --no-start --name=kubelet
+
+# No dwz symbols in go, disable
+override_dh_dwz:
